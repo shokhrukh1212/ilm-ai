@@ -12,7 +12,7 @@
 | # | Phase | Status | Started | Finished | Notes |
 |---|---|---|---|---|---|
 | 0 | Kickoff | done | 2026-05-24 | 2026-05-24 | Monorepo skeleton, TODO.md, env examples, local dev services |
-| 1 | Auth | pending |  |  | Supabase Auth + dashboard shell |
+| 1 | Auth | done | 2026-05-25 | 2026-05-25 | Supabase Auth + dashboard shell |
 | 2 | Materials upload + RAG ingest | pending |  |  | Upload, parse, chunk, embed, store |
 | 3 | RAG chat with citations | pending |  |  | Streaming chat, retrieval, citations |
 | 4 | Quiz generator + grader | pending |  |  | Quiz UI, generation, grading |
@@ -60,23 +60,71 @@
 - Time spent: 2h 20m
 - Hand-off note to next AI: "Phase 1 should start with Supabase project credentials and create the users migration plus protected app shell."
 
+## Phase 1 — Auth
+- Goal: Supabase Auth (email magic link + Google OAuth), onboarding wizard, protected (app) shell, FastAPI JWT middleware and /api/v1/me endpoint.
+- Files created/modified:
+  - apps/web/lib/supabase/client.ts — browser client via createBrowserClient
+  - apps/web/lib/supabase/server.ts — server client via createServerClient with async cookies()
+  - apps/web/lib/supabase/middleware.ts — updateSession helper for Next.js middleware
+  - apps/web/middleware.ts — session refresh + route protection, redirects to /login
+  - apps/web/app/(auth)/login/page.tsx — magic link + Google OAuth sign-in form
+  - apps/web/app/(auth)/signup/page.tsx — same flow with new-user copy
+  - apps/web/app/auth/callback/route.ts — handles OAuth/magic-link redirect, checks onboarded_at
+  - apps/web/app/onboarding/page.tsx — 3-step wizard (lang+name, goal, minutes/day)
+  - apps/web/app/(app)/layout.tsx — desktop sidebar + mobile bottom tab bar + avatar sign-out menu
+  - apps/web/app/(app)/dashboard/page.tsx — greeting "Salom, {name}" + placeholder cards
+  - apps/web/app/(app)/settings/page.tsx — full_name + lang form
+  - apps/web/components/nav/sign-out-button.tsx — client sign-out dropdown item
+  - apps/web/.env.example — added NEXT_PUBLIC_APP_BASE_URL
+  - apps/api/app/auth.py — PyJWT RS256/JWKS bearer dependency
+  - apps/api/app/routers/__init__.py
+  - apps/api/app/routers/me.py — GET /api/v1/me via Supabase PostgREST with user JWT
+  - apps/api/app/main.py — CORS middleware + me router
+  - apps/api/pyproject.toml — added pyjwt[crypto]>=2.9,<3
+  - apps/api/migrations/0001_users.sql — users table + RLS policy users_self + trigger
+  - apps/api/tests/test_me.py — unit tests for /api/v1/me endpoint
+- Decisions made:
+  - Used @supabase/ssr cookie-based session, not localStorage — required for SSR/middleware auth.
+  - createClient() called lazily inside event handlers (not at component mount) to avoid prerender errors when env vars are absent.
+  - JWT verification via PyJWT[crypto] with PyJWKClient fetching RS256 JWKS from SUPABASE_URL/auth/v1/.well-known/jwks.json.
+  - /api/v1/me calls Supabase PostgREST with the user's bearer token so RLS applies; no service-role key needed.
+  - users table has onboarded_at column; null means onboarding not yet completed; (app) layout redirects to /onboarding if null.
+  - Trigger handle_new_auth_user auto-creates users row on auth.users insert; onboarding only upserts profile fields.
+- Deviations from blueprint:
+  - None.
+- Blockers (need user to complete before manual verification):
+  - Create Supabase project and populate env vars (see below).
+  - Run apps/api/migrations/0001_users.sql in Supabase SQL Editor.
+  - Configure Supabase Auth providers: Email (magic link), Google OAuth.
+  - Set Supabase Site URL + Redirect URL to http://localhost:3000/auth/callback.
+- Env vars added:
+  - Web: NEXT_PUBLIC_APP_BASE_URL (apps/web/.env.example already updated)
+  - API: no new vars (SUPABASE_URL, SUPABASE_ANON_KEY, APP_BASE_URL already existed)
+- Checks run:
+  - `tsc --noEmit` — passed.
+  - `next build` — passed (10/10 pages).
+  - `uv run mypy app tests` — passed.
+  - `uv run pytest -q` — passed (3/3 tests).
+
 ## Tech stack snapshot (current)
 - Next.js 15.5.18, React 19.2.6, TypeScript 5.9.3
 - Tailwind CSS 4.3.0
 - shadcn/ui components added: Button, Card, Input, Label, Form, Tabs, Dialog, Sheet, Sonner, Skeleton, Progress, Tooltip, DropdownMenu, Avatar, Badge
 - FastAPI 0.136.3, Pydantic 2.13.4, Pydantic AI 1.102.0, uvicorn 0.48.0
-- Supabase project: pending
+- PyJWT 2.13.0 (with cryptography 48.0.0) — Phase 1 addition
+- @supabase/ssr 0.10.3, @supabase/supabase-js 2.106.1
+- Supabase project: pending (user must create)
 - Models: Claude Sonnet for tutor/planner/gaps, GPT-4o for quiz generation, OpenAI text-embedding-3-small, Cohere Rerank 3.5
 
 ## Open questions
-- Supabase project URL and keys are needed for Phase 1.
+- Supabase project must be created and env vars populated (see Phase 1 blockers above).
 - Merchant approvals for Payme and Click should start immediately because they can take 5-10 business days.
 - PayTechUz license key is needed before local Payme/Click integration can be verified.
 - PayTechUz package compatibility with Pydantic v2 must be resolved before Phase 7.
 - GitHub CLI auth and network access must be valid in the execution environment for automated PR creation and merge.
 
 ## Next AI to read this
-- Current phase: 1
+- Current phase: 2
 - Start by reading: TODO.md + AGENTS.md + ilm-ai-comprehensive-product-blueprint-and-phased-build-plan.md
 
 ## Diary & Submission Compliance

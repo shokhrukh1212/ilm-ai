@@ -19,6 +19,7 @@ dependencies = [
   "pydantic-settings>=2,<3",
   "pypdf>=6,<7",
   "python-docx>=1,<2",
+  "pyjwt[crypto]>=2.9,<3",
   "python-multipart>=0.0.20,<1",
   "python-telegram-bot==21.*",
   "sentry-sdk[fastapi]>=2,<3",
