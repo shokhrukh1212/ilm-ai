@@ -1,0 +1,53 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Next.js
+.next/
+out/
+*.tsbuildinfo
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+
+# Environment files
+.env
+.env.local
+.env.*
+!.env.example
+
+# Build and cache outputs
+dist/
+build/
+.turbo/
+.cache/
+coverage/
+
+# Local storage
+uploads/
+storage/
+minio-data/
+postgres-data/
+
+# OS/editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Sandbox/Git workaround
+.git-real/
+*:Zone.Identifier
+
+# Local product planning source
+ilm-ai-comprehensive-product-blueprint-and-phased-build-plan.md
+
+# Program diary must remain public
+!diary/
+!diary/**
