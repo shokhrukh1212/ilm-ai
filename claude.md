@@ -49,6 +49,49 @@ Build in the phases defined by the blueprint:
 
 Only implement the current phase unless the user explicitly asks otherwise. Each phase must produce a working, demoable increment and must update `TODO.md`.
 
+## Pull Request Template
+
+When creating a pull request, use this body structure exactly:
+
+```
+## What this PR does
+Phase [NUMBER] — [PHASE NAME]
+
+[One sentence describing what was built.]
+
+## Week [N] milestone progress
+- [x] Phase 0 — Repo kickoff ✅
+- [ ] Phase 1 — Auth + skeleton UI
+- [ ] Phase 2 — Materials upload + RAG ingest
+- [ ] Phase 3 — RAG chat with citations
+- [ ] Phase 4 — Quiz generator and grader
+- [ ] Phase 5 — Gap detection and learning plan
+- [ ] Phase 6 — Telegram bot
+- [ ] Phase 7 — Payments
+- [ ] Phase 8 — Eval, monitoring, and polish
+
+## What works now
+- [bullet list of what a reviewer can actually click and test]
+
+## How to test it
+1. Copy `.env.example` to `.env`, fill in Supabase + API keys
+2. `pnpm --filter web dev` + `uvicorn app.main:app --reload`
+3. [phase-specific steps]
+
+## Diary entry
+[diary/YYYY-MM-DD.md](./diary/YYYY-MM-DD.md)
+
+## Known issues / shortcuts taken
+- [anything cut or hardcoded for speed — be honest]
+```
+
+Check all phases up to and including the current one with ✅. Leave future phases unchecked.
+
+## Commit Message Rules
+
+- Do not include `Co-Authored-By` trailers, model names, or any reference to Claude or AI tools in commit messages.
+- Keep commit messages concise: a short imperative subject line, optionally followed by a blank line and a brief body if the change needs explanation.
+
 ## Required Git Workflow Per Phase
 
 - Start each phase from `main`.
