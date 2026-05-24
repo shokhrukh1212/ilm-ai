@@ -1,0 +1,9 @@
+{
+  "name": "ilm-ai",
+  "private": true,
+  "packageManager": "pnpm@11.3.0",
+  "scripts": {
+    "typecheck": "pnpm --filter web typecheck",
+    "dev:web": "pnpm --filter web dev"
+  }
+}
