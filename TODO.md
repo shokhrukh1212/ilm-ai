@@ -78,3 +78,11 @@
 ## Next AI to read this
 - Current phase: 1
 - Start by reading: TODO.md + AGENTS.md + ilm-ai-comprehensive-product-blueprint-and-phased-build-plan.md
+
+## Diary & Submission Compliance
+- Diary folder: diary/
+- Entries required: 2 per week from Week 2 onward
+- Loom required: 1 per week from Week 2 onward
+- Entry format: YYYY-MM-DD.md with 5 required sections
+- Last entry: 2026-05-24.md
+- Entries this week: 1

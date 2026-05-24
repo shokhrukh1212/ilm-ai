@@ -18,6 +18,7 @@ venv/
 
 # Environment files
 .env
+.env.local
 .env.*
 !.env.example
 
@@ -46,3 +47,7 @@ Thumbs.db
 
 # Local product planning source
 ilm-ai-comprehensive-product-blueprint-and-phased-build-plan.md
+
+# Program diary must remain public
+!diary/
+!diary/**
