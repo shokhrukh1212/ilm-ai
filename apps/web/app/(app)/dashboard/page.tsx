@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { BookOpen, MessageCircle } from "lucide-react";
+import Link from "next/link";
 
 export default async function DashboardPage() {
   const supabase = await createClient();
@@ -24,13 +25,17 @@ export default async function DashboardPage() {
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2">
-        <Card className="opacity-60">
+        <Card>
           <CardHeader className="flex flex-row items-center gap-3 pb-2">
             <BookOpen className="h-5 w-5 text-primary" />
             <CardTitle className="text-base">Materiallar</CardTitle>
           </CardHeader>
           <CardContent>
-            <CardDescription>Phase 2 da qo&apos;shiladi — PDF va matnlarni yuklang.</CardDescription>
+            <CardDescription>
+              <Link href="/library" className="text-primary underline-offset-4 hover:underline">
+                Kutubxonaga o&apos;tish
+              </Link>
+            </CardDescription>
           </CardContent>
         </Card>
 

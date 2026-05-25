@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     supabase_anon_key: str = ""
     supabase_service_role_key: str = ""
     supabase_jwt_secret: str = ""
+    supabase_storage_bucket: str = "materials"
     database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/ilm_ai"
 
     openai_api_key: str = ""
