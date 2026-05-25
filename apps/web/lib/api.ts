@@ -106,6 +106,117 @@ export function deleteMaterial(id: string): Promise<void> {
   return apiFetch<void>(`/materials/${id}`, { method: "DELETE" });
 }
 
+export type Citation = {
+  index: number;
+  chunk_id: number;
+  material_id: string;
+  material_title: string;
+  page: number | null;
+  snippet: string;
+};
+
+export type ChatStreamHandlers = {
+  onToken: (delta: string) => void;
+  onCitations: (citations: Citation[], sessionId: string) => void;
+  onDone: (sessionId: string) => void;
+  onError: (message: string) => void;
+};
+
+export type ChatRequest = {
+  material_ids: string[];
+  message: string;
+  lang?: string;
+  session_id?: string;
+};
+
+export async function streamChat(req: ChatRequest, handlers: ChatStreamHandlers): Promise<void> {
+  const supabase = createClient();
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+
+  if (!session?.access_token) {
+    throw new Error("Sessiya tugadi. Qayta kiring.");
+  }
+
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE_URL}/api/v1/chat`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${session.access_token}`,
+      },
+      body: JSON.stringify(req),
+    });
+  } catch {
+    throw new Error("API serverga ulanib bo'lmadi.");
+  }
+
+  if (!response.ok) {
+    const message = await readError(response);
+    throw new Error(message);
+  }
+
+  const reader = response.body!.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+
+    // sse-starlette uses \r\n line endings, so frames end in \r\n\r\n.
+    // Split on any blank-line boundary to be robust across implementations.
+    const frames = buffer.split(/\r\n\r\n|\n\n|\r\r/);
+    buffer = frames.pop() ?? "";
+
+    for (const frame of frames) {
+      let eventType = "message";
+      const dataLines: string[] = [];
+      for (const line of frame.split(/\r\n|\n|\r/)) {
+        if (line.startsWith("event:")) {
+          eventType = line.slice(6).trim();
+        } else if (line.startsWith("data:")) {
+          // Per SSE spec, strip one optional leading space; preserve the rest
+          // so token whitespace (word separators) is not lost.
+          let value = line.slice(5);
+          if (value.startsWith(" ")) value = value.slice(1);
+          dataLines.push(value);
+        }
+      }
+      if (dataLines.length === 0) continue;
+      const data = dataLines.join("\n");
+
+      if (eventType === "token") {
+        handlers.onToken(data);
+      } else if (eventType === "citations") {
+        try {
+          const parsed = JSON.parse(data) as { citations: Citation[]; session_id: string };
+          handlers.onCitations(parsed.citations, parsed.session_id);
+        } catch {
+          // malformed citation payload — ignore
+        }
+      } else if (eventType === "done") {
+        try {
+          const parsed = JSON.parse(data) as { session_id: string };
+          handlers.onDone(parsed.session_id);
+        } catch {
+          handlers.onDone("");
+        }
+      } else if (eventType === "error") {
+        try {
+          const parsed = JSON.parse(data) as { detail: string };
+          handlers.onError(parsed.detail);
+        } catch {
+          handlers.onError(data);
+        }
+      }
+    }
+  }
+}
+
 export async function getMaterialContent(id: string): Promise<string> {
   const supabase = createClient();
   const {
@@ -119,6 +230,31 @@ export async function getMaterialContent(id: string): Promise<string> {
   });
   if (!response.ok) throw new Error("Matn yuklanmadi");
   return response.text();
+}
+
+export type ChatSession = {
+  id: string;
+  title: string;
+  material_ids: string[];
+  created_at: string;
+};
+
+export type ChatMessage = {
+  id: number;
+  session_id: string;
+  role: "user" | "assistant" | "system";
+  content: string;
+  citations: Citation[] | null;
+  created_at: string;
+};
+
+export function listChatSessions(materialId?: string): Promise<ChatSession[]> {
+  const qs = materialId ? `?material_id=${encodeURIComponent(materialId)}` : "";
+  return apiFetch<ChatSession[]>(`/chat/sessions${qs}`);
+}
+
+export function getChatMessages(sessionId: string): Promise<ChatMessage[]> {
+  return apiFetch<ChatMessage[]>(`/chat/sessions/${sessionId}/messages`);
 }
 
 async function readError(response: Response): Promise<string> {

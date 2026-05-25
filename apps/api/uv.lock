@@ -1486,6 +1486,7 @@ dependencies = [
     { name = "python-telegram-bot" },
     { name = "sentry-sdk", extra = ["fastapi"] },
     { name = "sqlalchemy" },
+    { name = "sse-starlette" },
     { name = "stripe" },
     { name = "supabase" },
     { name = "uvicorn", extra = ["standard"] },
@@ -1519,6 +1520,7 @@ requires-dist = [
     { name = "python-telegram-bot", specifier = "==21.*" },
     { name = "sentry-sdk", extras = ["fastapi"], specifier = ">=2,<3" },
     { name = "sqlalchemy", specifier = ">=2,<3" },
+    { name = "sse-starlette", specifier = ">=2,<3" },
     { name = "stripe", specifier = ">=14,<15" },
     { name = "supabase", specifier = ">=2,<3" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.38,<1" },
@@ -4186,15 +4188,14 @@ asyncio = [
 
 [[package]]
 name = "sse-starlette"
-version = "3.4.4"
+version = "2.4.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anyio" },
-    { name = "starlette" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/f7/2b/58abc2d1fd397e7dde08e947e05c884d8ef2f78d5e2588c17a12d42d6994/sse_starlette-3.4.4.tar.gz", hash = "sha256:07e0fa0460138baf25cdd5fb28683472c3995dc1642225191b3832d62526bcb0", size = 31819, upload-time = "2026-05-12T17:37:17.019Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/07/3e/eae74d8d33e3262bae0a7e023bb43d8bdd27980aa3557333f4632611151f/sse_starlette-2.4.1.tar.gz", hash = "sha256:7c8a800a1ca343e9165fc06bbda45c78e4c6166320707ae30b416c42da070926", size = 18635, upload-time = "2025-07-06T09:41:33.631Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/dc/67/805710444ea8cc75fbf70b920ed431a560c4bf9c57f7d5a3117213189399/sse_starlette-3.4.4-py3-none-any.whl", hash = "sha256:3f4dd50d8aed2771a091f3a83000323fc3844541c16b4fe585ae2420cc6df973", size = 16514, upload-time = "2026-05-12T17:37:15.601Z" },
+    { url = "https://files.pythonhosted.org/packages/e4/f1/6c7eaa8187ba789a6dd6d74430307478d2a91c23a5452ab339b6fbe15a08/sse_starlette-2.4.1-py3-none-any.whl", hash = "sha256:08b77ea898ab1a13a428b2b6f73cfe6d0e607a7b4e15b9bb23e4a37b087fd39a", size = 10824, upload-time = "2025-07-06T09:41:32.321Z" },
 ]
 
 [[package]]

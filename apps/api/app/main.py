@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from .routers import materials, me
+from .routers import chat, materials, me
 from .settings import settings
 
 app = FastAPI(title=settings.app_name)
@@ -22,6 +22,7 @@ app.add_middleware(
 
 app.include_router(me.router)
 app.include_router(materials.router)
+app.include_router(chat.router)
 
 
 @app.get("/health")

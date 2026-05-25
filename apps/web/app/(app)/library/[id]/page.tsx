@@ -148,9 +148,8 @@ export default function MaterialDetailPage() {
         </div>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-2">
         <StatCard label="Sahifa" value={material.page_count?.toString() ?? "-"} />
-        <StatCard label="Bo'lak" value={material.chunks_count.toString()} />
         <StatCard label="Hajm" value={formatBytes(material.size_bytes)} />
       </div>
 

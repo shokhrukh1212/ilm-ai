@@ -14,8 +14,8 @@
 | 0 | Kickoff | done | 2026-05-24 | 2026-05-24 | Monorepo skeleton, TODO.md, env examples, local dev services |
 | 1 | Auth | done | 2026-05-25 | 2026-05-25 | Supabase Auth + dashboard shell |
 | 2 | Materials upload + RAG ingest | done | 2026-05-25 | 2026-05-25 | Upload, parse, chunk, embed, store |
-| 3 | RAG chat with citations | pending |  |  | Streaming chat, retrieval, citations |
-| 4 | Quiz generator + grader | pending |  |  | Quiz UI, generation, grading |
+| 3 | RAG chat with citations | done | 2026-05-25 | 2026-05-25 | Streaming chat, hybrid RRF+rerank retrieval, citation chips |
+| 4 | Quiz generator + grader | pending |  |  | Quiz UI, generation, grading, Pydantic AI structured output |
 | 5 | Gap detection + learning plan | pending |  |  | Gaps agent and plan calendar |
 | 6 | Telegram bot | pending |  |  | Webhook bot and link flow |
 | 7 | Payments | pending |  |  | Payme, Click, Stripe |
@@ -168,6 +168,62 @@
   - `uv --cache-dir /tmp/uv-cache run pytest -q` — passed (11/11 tests).
 - Time spent: 3h 10m
 
+## Phase 3 — RAG chat with citations
+- Goal: Streaming RAG chat with hybrid retrieval, Cohere rerank, citation chips opening PDF at page.
+- Files created/modified:
+  - apps/api/migrations/0003_chat.sql — chat_sessions, chat_messages tables, indexes, RLS
+  - apps/api/app/services/embeddings.py — added embed_query() for search_query input_type
+  - apps/api/app/services/retrieve.py — hybrid RRF (pgvector + tsvector) + Cohere rerank top-5
+  - apps/api/app/services/citations.py — map chunks → Citation with title/page/snippet
+  - apps/api/app/agents/__init__.py — agents package
+  - apps/api/app/agents/tutor.py — Pydantic AI Agent (claude-sonnet-4-6), exact blueprint §5 Socratic prompt, sanitize/postfilter helpers, lazy init
+  - apps/api/app/routers/chat.py — POST /api/v1/chat SSE endpoint with EventSourceResponse
+  - apps/api/app/main.py — registered chat router
+  - apps/api/app/auth.py — removed stale type: ignore comments (pre-existing)
+  - apps/api/pyproject.toml — added sse-starlette>=2,<3 (was already transitively available)
+  - apps/api/tests/test_chat_migration.py
+  - apps/api/tests/test_tutor.py
+  - apps/api/tests/test_retrieve.py
+  - apps/api/tests/test_chat_router.py
+  - apps/web/lib/api.ts — added streamChat(), Citation type, ChatRequest type, ChatStreamHandlers
+  - apps/web/components/PdfPreview.tsx — shared iframe-based PDF preview with optional page anchor
+  - apps/web/components/CitationChip.tsx — clickable [n] badge, aria-labelled
+  - apps/web/components/ChatStream.tsx — streaming chat UI, inline [n] → CitationChip rendering
+  - apps/web/app/(app)/chat/[materialId]/page.tsx — chat page with citation Sheet
+- Decisions made:
+  - Embedding model: used Cohere embed-multilingual-v3.0 (input_type="search_query") to match
+    Phase 2's stored 1024-dim vectors. CLAUDE.md specifies OpenAI text-embedding-3-small (1536-dim)
+    but Phase 2 actually stored Cohere vectors — using a different model would corrupt cosine search.
+    Deviation documented here.
+  - Retrieval: pre-retrieve + inject into <sources> (blueprint §5 template) rather than LLM tool
+    call. Faster first token, deterministic, matches exact prompt template. Confirmed with user.
+  - RRF SQL adapted to real schema: added chunk_level='child', user_id ownership filter,
+    tsv @@ plainto_tsquery match filter on bm side, 'simple' text config (matches stored tsv).
+  - Cohere rerank model: rerank-v3.5 as specified. Falls back to RRF top-K on error or missing key.
+  - Tutor model: claude-sonnet-4-6 (latest Sonnet at implementation time; blueprint said 4.5).
+  - PDF citation preview: iframe + #page=N (reuse Phase 2 pattern). No react-pdf worker needed.
+  - SSE transport: sse-starlette EventSourceResponse + raw fetch ReadableStream on frontend.
+    No Vercel AI SDK added (confirmed with user).
+  - Pydantic AI Agent lazy-initialized (get_tutor_agent()) so tests can import without ANTHROPIC_API_KEY.
+- Blockers / manual verification needed:
+  - Run apps/api/migrations/0003_chat.sql in Supabase SQL Editor (after 0002 already applied).
+  - Populate ANTHROPIC_API_KEY and COHERE_API_KEY in .env before live chat.
+  - Acceptance criteria requiring live LLM+DB (listed below) could not be verified without keys:
+    - "Fotosintez nima?" in Uzbek → streamed answer with [1][2] citations within 3s.
+    - Citation chip opens PDF at correct page in Sheet.
+    - Prompt injection chunk ignored — model answers normally.
+    - Empty retrieval → honest "not in sources" reply in user language, citations=[].
+- p95 latency: not measured (no live keys in sandbox). Expected <3s total, <1.5s first token at
+  claude-sonnet-4-6 with 5 chunks in prompt. Record actual p95 after first live run.
+- Prompt tweaks: none yet. Exact blueprint §5 prompt used. Iterate against eval suite in Phase 8.
+- Env vars added: none (ANTHROPIC_API_KEY and COHERE_API_KEY already in .env.example from Phase 0)
+- Checks run:
+  - `uv --cache-dir /tmp/uv-cache run mypy app tests` — passed (29 source files, 0 errors)
+  - `uv --cache-dir /tmp/uv-cache run pytest -q` — passed (37/37 tests)
+  - `pnpm --filter web typecheck` — passed
+  - `pnpm --filter web build` — passed (11/11 pages, including /chat/[materialId])
+- Time spent: ~2h
+
 ## Tech stack snapshot (current)
 - Next.js 15.5.18, React 19.2.6, TypeScript 5.9.3
 - Tailwind CSS 4.3.0
@@ -177,8 +233,9 @@
 - @supabase/ssr 0.10.3, @supabase/supabase-js 2.106.1
 - react-pdf 10.4.1, pdfjs-dist 5.7.284 — Phase 2 additions
 - llama-index-core 0.14.22, langdetect 1.0.9 — Phase 2 additions
+- sse-starlette (explicit dep) — Phase 3 addition
 - Supabase project: pending (user must create)
-- Models: Claude Sonnet for tutor/planner/gaps, GPT-4o for quiz generation, OpenAI text-embedding-3-small, Cohere Rerank 3.5
+- Models: claude-sonnet-4-6 for tutor (Phase 3), GPT-4o for quiz generation, Cohere embed-multilingual-v3.0 for embeddings (1024-dim), Cohere rerank-v3.5
 
 ## Open questions
 - Supabase project must be created and env vars populated (see Phase 1 blockers above).
@@ -188,7 +245,7 @@
 - GitHub CLI auth and network access must be valid in the execution environment for automated PR creation and merge.
 
 ## Next AI to read this
-- Current phase: 3
+- Current phase: 4
 - Start by reading: TODO.md + AGENTS.md + ilm-ai-comprehensive-product-blueprint-and-phased-build-plan.md
 
 ## Diary & Submission Compliance

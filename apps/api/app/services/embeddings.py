@@ -16,7 +16,7 @@ class EmbeddingService:
         else:
             if not settings.cohere_api_key:
                 raise RuntimeError("COHERE_API_KEY is not configured")
-            self.client = cohere.AsyncClientV2(api_key=settings.cohere_api_key)
+            self.client = cohere.AsyncClientV2(api_key=settings.cohere_api_key, timeout=10.0)
 
     async def embed_texts(self, texts: Sequence[str]) -> list[list[float]]:
         cleaned = [text for text in texts if text.strip()]
@@ -36,3 +36,14 @@ class EmbeddingService:
                 raise RuntimeError("Cohere returned no float embeddings")
             vectors.extend(response.embeddings.float_)
         return vectors
+
+    async def embed_query(self, text: str) -> list[float]:
+        response = await self.client.embed(
+            texts=[text],
+            model=EMBEDDING_MODEL,
+            input_type="search_query",
+            embedding_types=["float"],
+        )
+        if response.embeddings.float_ is None:
+            raise RuntimeError("Cohere returned no float embeddings")
+        return response.embeddings.float_[0]
