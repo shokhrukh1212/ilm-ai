@@ -16,7 +16,7 @@ class EmbeddingService:
         else:
             if not settings.cohere_api_key:
                 raise RuntimeError("COHERE_API_KEY is not configured")
-            self.client = cohere.AsyncClientV2(api_key=settings.cohere_api_key)
+            self.client = cohere.AsyncClientV2(api_key=settings.cohere_api_key, timeout=10.0)
 
     async def embed_texts(self, texts: Sequence[str]) -> list[list[float]]:
         cleaned = [text for text in texts if text.strip()]

@@ -167,17 +167,27 @@ export async function streamChat(req: ChatRequest, handlers: ChatStreamHandlers)
     if (done) break;
     buffer += decoder.decode(value, { stream: true });
 
-    const frames = buffer.split("\n\n");
+    // sse-starlette uses \r\n line endings, so frames end in \r\n\r\n.
+    // Split on any blank-line boundary to be robust across implementations.
+    const frames = buffer.split(/\r\n\r\n|\n\n|\r\r/);
     buffer = frames.pop() ?? "";
 
     for (const frame of frames) {
       let eventType = "message";
-      let data = "";
-      for (const line of frame.split("\n")) {
-        if (line.startsWith("event:")) eventType = line.slice(6).trim();
-        else if (line.startsWith("data:")) data = line.slice(5).trim();
+      const dataLines: string[] = [];
+      for (const line of frame.split(/\r\n|\n|\r/)) {
+        if (line.startsWith("event:")) {
+          eventType = line.slice(6).trim();
+        } else if (line.startsWith("data:")) {
+          // Per SSE spec, strip one optional leading space; preserve the rest
+          // so token whitespace (word separators) is not lost.
+          let value = line.slice(5);
+          if (value.startsWith(" ")) value = value.slice(1);
+          dataLines.push(value);
+        }
       }
-      if (!data) continue;
+      if (dataLines.length === 0) continue;
+      const data = dataLines.join("\n");
 
       if (eventType === "token") {
         handlers.onToken(data);
@@ -220,6 +230,31 @@ export async function getMaterialContent(id: string): Promise<string> {
   });
   if (!response.ok) throw new Error("Matn yuklanmadi");
   return response.text();
+}
+
+export type ChatSession = {
+  id: string;
+  title: string;
+  material_ids: string[];
+  created_at: string;
+};
+
+export type ChatMessage = {
+  id: number;
+  session_id: string;
+  role: "user" | "assistant" | "system";
+  content: string;
+  citations: Citation[] | null;
+  created_at: string;
+};
+
+export function listChatSessions(materialId?: string): Promise<ChatSession[]> {
+  const qs = materialId ? `?material_id=${encodeURIComponent(materialId)}` : "";
+  return apiFetch<ChatSession[]>(`/chat/sessions${qs}`);
+}
+
+export function getChatMessages(sessionId: string): Promise<ChatMessage[]> {
+  return apiFetch<ChatMessage[]>(`/chat/sessions/${sessionId}/messages`);
 }
 
 async function readError(response: Response): Promise<string> {

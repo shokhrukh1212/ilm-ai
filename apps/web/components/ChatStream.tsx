@@ -1,6 +1,8 @@
 "use client";
 
 import { useRef, useState } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { Loader2, Send } from "lucide-react";
 import { toast } from "sonner";
 
@@ -8,31 +10,75 @@ import { Button } from "@/components/ui/button";
 import { type Citation, type ChatRequest, streamChat } from "@/lib/api";
 import { CitationChip } from "./CitationChip";
 
-type Message = {
+export type Message = {
   role: "user" | "assistant";
   content: string;
   citations: Citation[];
 };
 
+const THINKING_PREFIXES = [
+  "haqida o'ylamoqdaman",
+  "bo'yicha izlamoqdaman",
+  "bo'yicha o'ylamoqdaman",
+  "haqida manba ko'rmoqdaman",
+];
+
+function thinkingText(question: string): string {
+  const words = question.trim().split(/\s+/).slice(0, 5).join(" ");
+  const prefix = THINKING_PREFIXES[Math.floor(Math.random() * THINKING_PREFIXES.length)];
+  return `«${words}» ${prefix}…`;
+}
+
 type ChatStreamProps = {
   materialIds: string[];
   onOpenCitation: (citation: Citation) => void;
+  initialMessages?: Message[];
+  initialSessionId?: string;
+  onNewSession?: (sessionId: string) => void;
 };
 
 const CITATION_MARKER_RE = /(\[\d+\])/g;
+
+const MD_COMPONENTS: React.ComponentProps<typeof ReactMarkdown>["components"] = {
+  p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
+  strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
+  em: ({ children }) => <em className="italic">{children}</em>,
+  ul: ({ children }) => <ul className="mb-2 list-disc pl-4 space-y-0.5">{children}</ul>,
+  ol: ({ children }) => <ol className="mb-2 list-decimal pl-4 space-y-0.5">{children}</ol>,
+  li: ({ children }) => <li className="leading-relaxed">{children}</li>,
+  h1: ({ children }) => <h1 className="text-base font-bold mb-1">{children}</h1>,
+  h2: ({ children }) => <h2 className="text-sm font-bold mb-1">{children}</h2>,
+  h3: ({ children }) => <h3 className="text-sm font-semibold mb-1">{children}</h3>,
+  hr: () => <hr className="my-2 border-border" />,
+  code: ({ children }) => <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">{children}</code>,
+  pre: ({ children }) => <pre className="mb-2 overflow-x-auto rounded-md bg-muted p-3 text-xs font-mono">{children}</pre>,
+  blockquote: ({ children }) => <blockquote className="border-l-2 border-muted-foreground/40 pl-3 italic text-muted-foreground">{children}</blockquote>,
+};
 
 function AssistantBubble({
   content,
   citations,
   onOpenCitation,
   streaming,
+  thinkingQuestion,
 }: {
   content: string;
   citations: Citation[];
   onOpenCitation: (c: Citation) => void;
   streaming: boolean;
+  thinkingQuestion?: string;
 }) {
   const citationMap = new Map(citations.map((c) => [c.index, c]));
+
+  if (!content && streaming && thinkingQuestion) {
+    return (
+      <div className="max-w-[85%] rounded-2xl rounded-tl-sm bg-card border px-4 py-3 text-sm leading-relaxed text-muted-foreground italic flex items-center gap-2">
+        <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0" />
+        {thinkingText(thinkingQuestion)}
+      </div>
+    );
+  }
+
   const parts = content.split(CITATION_MARKER_RE);
 
   return (
@@ -48,7 +94,11 @@ function AssistantBubble({
             <span key={i} className="text-muted-foreground text-xs">{part}</span>
           );
         }
-        return <span key={i}>{part}</span>;
+        return (
+          <ReactMarkdown key={i} remarkPlugins={[remarkGfm]} components={MD_COMPONENTS}>
+            {part}
+          </ReactMarkdown>
+        );
       })}
       {streaming && (
         <span className="ml-0.5 inline-block h-3.5 w-0.5 animate-pulse bg-primary/60 align-middle" />
@@ -57,11 +107,19 @@ function AssistantBubble({
   );
 }
 
-export function ChatStream({ materialIds, onOpenCitation }: ChatStreamProps) {
-  const [messages, setMessages] = useState<Message[]>([]);
+export function ChatStream({
+  materialIds,
+  onOpenCitation,
+  initialMessages,
+  initialSessionId,
+  onNewSession,
+}: ChatStreamProps) {
+  const [messages, setMessages] = useState<Message[]>(initialMessages ?? []);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
-  const sessionIdRef = useRef<string | undefined>(undefined);
+  const [currentQuestion, setCurrentQuestion] = useState<string>("");
+  const sessionIdRef = useRef<string | undefined>(initialSessionId);
+  const isNewSessionRef = useRef(!initialSessionId);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   function scrollToBottom() {
@@ -74,6 +132,7 @@ export function ChatStream({ materialIds, onOpenCitation }: ChatStreamProps) {
 
     setInput("");
     setSending(true);
+    setCurrentQuestion(text);
 
     setMessages((prev) => [
       ...prev,
@@ -112,7 +171,13 @@ export function ChatStream({ materialIds, onOpenCitation }: ChatStreamProps) {
           });
         },
         onDone: (sessionId) => {
-          if (sessionId) sessionIdRef.current = sessionId;
+          if (sessionId) {
+            sessionIdRef.current = sessionId;
+            if (isNewSessionRef.current) {
+              isNewSessionRef.current = false;
+              onNewSession?.(sessionId);
+            }
+          }
           setSending(false);
           scrollToBottom();
         },
@@ -172,7 +237,8 @@ export function ChatStream({ materialIds, onOpenCitation }: ChatStreamProps) {
                 content={msg.content}
                 citations={msg.citations}
                 onOpenCitation={onOpenCitation}
-                streaming={sending && i === lastAssistantIndex && !msg.content.length === false}
+                streaming={sending && i === lastAssistantIndex}
+                thinkingQuestion={sending && i === lastAssistantIndex ? currentQuestion : undefined}
               />
             </div>
           )

@@ -1,8 +1,10 @@
+import asyncio
 import json
 import logging
 import time
 from collections.abc import AsyncGenerator
-from typing import Annotated
+from datetime import datetime
+from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -156,18 +158,33 @@ async def _event_generator(
     usage = TutorUsage(tokens_in=0, tokens_out=0)
 
     try:
-        chunks = await retrieve(req.message, material_ids, user_id)
+        # Heartbeat so the client knows the connection is alive while we retrieve
+        yield {"event": "status", "data": "retrieving"}
+        logger.info("chat retrieve start session=%s", session_id)
+
+        try:
+            chunks = await asyncio.wait_for(
+                retrieve(req.message, material_ids, user_id), timeout=15.0
+            )
+        except asyncio.TimeoutError:
+            logger.warning("retrieve timed out after 15s session=%s", session_id)
+            chunks = []
+
+        logger.info("chat retrieve done chunks=%d session=%s", len(chunks), session_id)
         citations = await build_citations(chunks)
         user_turn = build_user_turn(citations, req.message)
 
+        logger.info("chat stream start session=%s", session_id)
         async with get_tutor_agent().run_stream(user_turn) as stream_ctx:
             async for delta in stream_ctx.stream_text(delta=True):
                 full_text += delta
                 yield {"event": "token", "data": delta}
 
-            raw_usage = stream_ctx.usage()
+            raw_usage = stream_ctx.usage
             usage.tokens_in = raw_usage.request_tokens or 0
             usage.tokens_out = raw_usage.response_tokens or 0
+
+        logger.info("chat stream done tokens_out=%d session=%s", usage.tokens_out, session_id)
 
         final_text = postfilter_citations(full_text, len(citations))
         citations_payload = [citation_to_dict(c) for c in citations]
@@ -186,3 +203,105 @@ async def _event_generator(
     except Exception:
         logger.exception("chat stream error session=%s", session_id)
         yield {"event": "error", "data": json.dumps({"detail": "So'rovni bajarishda xato yuz berdi"})}
+
+
+class ChatSessionOut(BaseModel):
+    id: str
+    title: str
+    material_ids: list[str]
+    created_at: datetime
+
+
+class ChatMessageOut(BaseModel):
+    id: int
+    session_id: str
+    role: str
+    content: str
+    citations: list[dict[str, Any]] | None = None
+    created_at: datetime
+
+
+@router.get("/sessions")
+async def list_sessions(
+    user_id: Annotated[str, Depends(get_current_user_id)],
+    material_id: str | None = None,
+) -> list[ChatSessionOut]:
+    connection = await db.connect()
+    try:
+        if material_id:
+            rows = await connection.fetch(
+                """
+                SELECT id::text, title, material_ids, created_at
+                FROM public.chat_sessions
+                WHERE user_id = $1::uuid AND $2::uuid = ANY(material_ids)
+                ORDER BY created_at DESC
+                LIMIT 50
+                """,
+                user_id,
+                material_id,
+            )
+        else:
+            rows = await connection.fetch(
+                """
+                SELECT id::text, title, material_ids, created_at
+                FROM public.chat_sessions
+                WHERE user_id = $1::uuid
+                ORDER BY created_at DESC
+                LIMIT 50
+                """,
+                user_id,
+            )
+    finally:
+        await connection.close()
+    return [
+        ChatSessionOut(
+            id=row["id"],
+            title=row["title"],
+            material_ids=[str(mid) for mid in row["material_ids"]],
+            created_at=row["created_at"],
+        )
+        for row in rows
+    ]
+
+
+@router.get("/sessions/{session_id}/messages")
+async def get_session_messages(
+    session_id: str,
+    user_id: Annotated[str, Depends(get_current_user_id)],
+) -> list[ChatMessageOut]:
+    connection = await db.connect()
+    try:
+        session_row = await connection.fetchrow(
+            "SELECT id FROM public.chat_sessions WHERE id = $1::uuid AND user_id = $2::uuid",
+            session_id,
+            user_id,
+        )
+        if not session_row:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+        rows = await connection.fetch(
+            """
+            SELECT id, session_id::text, role, content, citations, created_at
+            FROM public.chat_messages
+            WHERE session_id = $1::uuid
+            ORDER BY created_at ASC
+            """,
+            session_id,
+        )
+    finally:
+        await connection.close()
+    result = []
+    for row in rows:
+        raw = row["citations"]
+        if isinstance(raw, str):
+            raw = json.loads(raw)
+        result.append(
+            ChatMessageOut(
+                id=row["id"],
+                session_id=row["session_id"],
+                role=row["role"],
+                content=row["content"],
+                citations=raw,
+                created_at=row["created_at"],
+            )
+        )
+    return result
