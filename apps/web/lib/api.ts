@@ -106,6 +106,107 @@ export function deleteMaterial(id: string): Promise<void> {
   return apiFetch<void>(`/materials/${id}`, { method: "DELETE" });
 }
 
+export type Citation = {
+  index: number;
+  chunk_id: number;
+  material_id: string;
+  material_title: string;
+  page: number | null;
+  snippet: string;
+};
+
+export type ChatStreamHandlers = {
+  onToken: (delta: string) => void;
+  onCitations: (citations: Citation[], sessionId: string) => void;
+  onDone: (sessionId: string) => void;
+  onError: (message: string) => void;
+};
+
+export type ChatRequest = {
+  material_ids: string[];
+  message: string;
+  lang?: string;
+  session_id?: string;
+};
+
+export async function streamChat(req: ChatRequest, handlers: ChatStreamHandlers): Promise<void> {
+  const supabase = createClient();
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+
+  if (!session?.access_token) {
+    throw new Error("Sessiya tugadi. Qayta kiring.");
+  }
+
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE_URL}/api/v1/chat`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${session.access_token}`,
+      },
+      body: JSON.stringify(req),
+    });
+  } catch {
+    throw new Error("API serverga ulanib bo'lmadi.");
+  }
+
+  if (!response.ok) {
+    const message = await readError(response);
+    throw new Error(message);
+  }
+
+  const reader = response.body!.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+
+    const frames = buffer.split("\n\n");
+    buffer = frames.pop() ?? "";
+
+    for (const frame of frames) {
+      let eventType = "message";
+      let data = "";
+      for (const line of frame.split("\n")) {
+        if (line.startsWith("event:")) eventType = line.slice(6).trim();
+        else if (line.startsWith("data:")) data = line.slice(5).trim();
+      }
+      if (!data) continue;
+
+      if (eventType === "token") {
+        handlers.onToken(data);
+      } else if (eventType === "citations") {
+        try {
+          const parsed = JSON.parse(data) as { citations: Citation[]; session_id: string };
+          handlers.onCitations(parsed.citations, parsed.session_id);
+        } catch {
+          // malformed citation payload — ignore
+        }
+      } else if (eventType === "done") {
+        try {
+          const parsed = JSON.parse(data) as { session_id: string };
+          handlers.onDone(parsed.session_id);
+        } catch {
+          handlers.onDone("");
+        }
+      } else if (eventType === "error") {
+        try {
+          const parsed = JSON.parse(data) as { detail: string };
+          handlers.onError(parsed.detail);
+        } catch {
+          handlers.onError(data);
+        }
+      }
+    }
+  }
+}
+
 export async function getMaterialContent(id: string): Promise<string> {
   const supabase = createClient();
   const {

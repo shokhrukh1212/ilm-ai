@@ -27,7 +27,7 @@ def _decode_token(token: str) -> dict[str, Any]:
     if alg == "HS256":
         if not settings.supabase_jwt_secret:
             raise jwt.InvalidTokenError("SUPABASE_JWT_SECRET is not configured")
-        return jwt.decode(  # type: ignore[no-any-return]
+        return jwt.decode(
             token,
             settings.supabase_jwt_secret,
             algorithms=["HS256"],
@@ -37,7 +37,7 @@ def _decode_token(token: str) -> dict[str, Any]:
 
     # Asymmetric (RS256, ES256, …) — let the JWK declare its own algorithm
     signing_key = _get_jwks_client().get_signing_key_from_jwt(token)
-    return jwt.decode(  # type: ignore[no-any-return]
+    return jwt.decode(
         token,
         signing_key.key,
         algorithms=[signing_key.algorithm_name],

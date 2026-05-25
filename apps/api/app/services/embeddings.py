@@ -36,3 +36,14 @@ class EmbeddingService:
                 raise RuntimeError("Cohere returned no float embeddings")
             vectors.extend(response.embeddings.float_)
         return vectors
+
+    async def embed_query(self, text: str) -> list[float]:
+        response = await self.client.embed(
+            texts=[text],
+            model=EMBEDDING_MODEL,
+            input_type="search_query",
+            embedding_types=["float"],
+        )
+        if response.embeddings.float_ is None:
+            raise RuntimeError("Cohere returned no float embeddings")
+        return response.embeddings.float_[0]
