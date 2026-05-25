@@ -1,6 +1,6 @@
 # Ilm AI
 
-Builder: [I WILL FILL IN MY NAME]
+Builder: Shokhrukh Karimov
 
 Ilm AI is a personal AI learning companion for learners in Uzbekistan and Central Asia. Learners upload their own materials, ask grounded questions in Uzbek, Russian, or English, take quizzes generated from those sources, identify knowledge gaps, and receive practical learning plans with Telegram reminders and quick practice built into the flow.
 
