@@ -3,10 +3,12 @@ from dataclasses import dataclass
 from typing import Any
 
 from pydantic_ai import Agent
+from pydantic_ai.models.anthropic import AnthropicModel
+from pydantic_ai.providers.anthropic import AnthropicProvider
 
 from ..services.citations import Citation
 
-TUTOR_MODEL = "anthropic:claude-sonnet-4-6"
+TUTOR_MODEL = "claude-sonnet-4-6"
 PROMPT_VARIANT = "tutor-v1"
 
 # Exact system prompt from blueprint §5
@@ -40,7 +42,12 @@ _tutor_agent: Agent[None, str] | None = None
 def get_tutor_agent() -> Agent[None, str]:
     global _tutor_agent
     if _tutor_agent is None:
-        _tutor_agent = Agent(TUTOR_MODEL, system_prompt=SYSTEM_PROMPT)
+        from ..settings import settings
+        model = AnthropicModel(
+            "claude-sonnet-4-6",
+            provider=AnthropicProvider(api_key=settings.anthropic_api_key),
+        )
+        _tutor_agent = Agent(model, system_prompt=SYSTEM_PROMPT)
     return _tutor_agent
 
 
