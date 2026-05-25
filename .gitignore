@@ -51,3 +51,4 @@ ilm-ai-comprehensive-product-blueprint-and-phased-build-plan.md
 # Program diary must remain public
 !diary/
 !diary/**
+.vercel

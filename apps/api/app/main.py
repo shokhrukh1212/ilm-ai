@@ -6,16 +6,22 @@ from .settings import settings
 
 app = FastAPI(title=settings.app_name)
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[
-        settings.app_base_url,
+_cors_origins = (
+    ["*"]
+    if settings.is_test_mode
+    else [
+        settings.frontend_url,
         "http://localhost:3000",
         "http://localhost:3001",
         "http://127.0.0.1:3000",
         "http://127.0.0.1:3001",
-    ],
-    allow_credentials=True,
+    ]
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_cors_origins,
+    allow_credentials=not settings.is_test_mode,
     allow_methods=["*"],
     allow_headers=["*"],
 )

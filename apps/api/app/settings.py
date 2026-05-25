@@ -7,6 +7,7 @@ class Settings(BaseSettings):
 
     app_name: str = "Ilm AI API"
     app_base_url: str = "http://localhost:8000"
+    frontend_url: str = "http://localhost:3000"
     is_test_mode: bool = True
 
     supabase_url: str = ""
