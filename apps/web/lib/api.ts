@@ -44,14 +44,19 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
     throw new Error("Sessiya tugadi. Qayta kiring.");
   }
 
-  const response = await fetch(`${API_BASE_URL}/api/v1${path}`, {
-    ...init,
-    headers: {
-      ...(init.body instanceof FormData ? {} : { "Content-Type": "application/json" }),
-      ...init.headers,
-      Authorization: `Bearer ${session.access_token}`,
-    },
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE_URL}/api/v1${path}`, {
+      ...init,
+      headers: {
+        ...(init.body instanceof FormData ? {} : { "Content-Type": "application/json" }),
+        ...init.headers,
+        Authorization: `Bearer ${session.access_token}`,
+      },
+    });
+  } catch {
+    throw new Error(`API serverga ulanib bo'lmadi. FastAPI ${API_BASE_URL} manzilida ishlayotganini tekshiring.`);
+  }
 
   if (!response.ok) {
     const message = await readError(response);
@@ -99,6 +104,21 @@ export function pasteMaterial(title: string, content: string): Promise<Material>
 
 export function deleteMaterial(id: string): Promise<void> {
   return apiFetch<void>(`/materials/${id}`, { method: "DELETE" });
+}
+
+export async function getMaterialContent(id: string): Promise<string> {
+  const supabase = createClient();
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  if (!session?.access_token) throw new Error("Sessiya tugadi. Qayta kiring.");
+
+  const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
+  const response = await fetch(`${API_BASE_URL}/api/v1/materials/${id}/content`, {
+    headers: { Authorization: `Bearer ${session.access_token}` },
+  });
+  if (!response.ok) throw new Error("Matn yuklanmadi");
+  return response.text();
 }
 
 async function readError(response: Response): Promise<string> {

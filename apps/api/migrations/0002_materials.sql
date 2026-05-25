@@ -44,7 +44,7 @@ create table if not exists public.chunks (
   ord int not null,
   chunk_level text not null check (chunk_level in ('parent','child')) default 'child',
   parent_chunk_id bigint references public.chunks(id) on delete cascade,
-  embedding vector(1536),
+  embedding vector(1024),
   tsv tsvector generated always as (to_tsvector('simple', content)) stored,
   created_at timestamptz not null default now()
 );

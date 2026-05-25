@@ -1,7 +1,10 @@
+import logging
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from io import BytesIO
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 from docx import Document
 from pypdf import PdfReader
@@ -30,9 +33,11 @@ class ParsedMaterial:
 
 
 async def ingest_uploaded_material(material_id: str, user_id: str) -> None:
+    logger.info("ingest_uploaded start material_id=%s", material_id)
     try:
         material = await _get_material(material_id, user_id)
         if material is None:
+            logger.warning("ingest_uploaded: material not found material_id=%s", material_id)
             return
         file_path = material.get("file_path")
         source_type = material.get("source_type")
@@ -42,18 +47,23 @@ async def ingest_uploaded_material(material_id: str, user_id: str) -> None:
         raw = await get_storage_service().download_bytes(file_path)
         parsed = parse_uploaded_file(raw, source_type)
         await _ingest_segments(material_id, user_id, parsed)
+        logger.info("ingest_uploaded done material_id=%s", material_id)
     except Exception as exc:
+        logger.exception("ingest_uploaded failed material_id=%s: %s", material_id, exc)
         await _mark_failed(material_id, user_id, exc)
 
 
 async def ingest_paste_material(material_id: str, user_id: str, content: str) -> None:
+    logger.info("ingest_paste start material_id=%s", material_id)
     try:
         parsed = ParsedMaterial(
             segments=[ParsedSegment(page=1, text=content)],
             page_count=1,
         )
         await _ingest_segments(material_id, user_id, parsed)
+        logger.info("ingest_paste done material_id=%s", material_id)
     except Exception as exc:
+        logger.exception("ingest_paste failed material_id=%s: %s", material_id, exc)
         await _mark_failed(material_id, user_id, exc)
 
 
@@ -231,18 +241,21 @@ def vector_literal(values: Iterable[float]) -> str:
 
 async def _mark_failed(material_id: str, user_id: str, exc: Exception) -> None:
     message = str(exc).strip() or exc.__class__.__name__
-    connection = await db.connect()
     try:
-        await connection.execute(
-            """
-            update public.materials
-            set status = 'failed',
-                error_message = $1
-            where id = $2::uuid and user_id = $3::uuid
-            """,
-            message[:500],
-            material_id,
-            user_id,
-        )
-    finally:
-        await connection.close()
+        connection = await db.connect()
+        try:
+            await connection.execute(
+                """
+                update public.materials
+                set status = 'failed',
+                    error_message = $1
+                where id = $2::uuid and user_id = $3::uuid
+                """,
+                message[:500],
+                material_id,
+                user_id,
+            )
+        finally:
+            await connection.close()
+    except Exception as db_exc:
+        logger.exception("_mark_failed could not update DB for material_id=%s: %s", material_id, db_exc)

@@ -1,6 +1,5 @@
 import { redirect } from "next/navigation";
-import Link from "next/link";
-import { BookOpen, LayoutDashboard, Library, Settings } from "lucide-react";
+import { BookOpen } from "lucide-react";
 
 import { createClient } from "@/lib/supabase/server";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -11,12 +10,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { SignOutButton } from "@/components/nav/sign-out-button";
-
-const NAV = [
-  { href: "/dashboard", label: "Bosh sahifa", icon: LayoutDashboard },
-  { href: "/library", label: "Kutubxona", icon: Library },
-  { href: "/settings", label: "Sozlamalar", icon: Settings },
-];
+import { SidebarNav, BottomNav } from "@/components/nav/nav-links";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient();
@@ -50,16 +44,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           <BookOpen className="h-5 w-5 text-primary" />
           <span className="font-semibold text-lg">Ilm AI</span>
         </div>
-        <nav className="flex flex-col gap-1">
-          {NAV.map(({ href, label, icon: Icon }) => (
-            <Button key={href} variant="ghost" asChild className="justify-start gap-3 h-9">
-              <Link href={href}>
-                <Icon className="h-4 w-4" />
-                {label}
-              </Link>
-            </Button>
-          ))}
-        </nav>
+        <SidebarNav />
         <div className="mt-auto">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -101,19 +86,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
         <main className="flex-1 px-4 py-6 md:px-8">{children}</main>
 
-        {/* Mobile bottom tab bar */}
-        <nav className="flex md:hidden border-t bg-card" aria-label="Asosiy navigatsiya">
-          {NAV.map(({ href, label, icon: Icon }) => (
-            <Link
-              key={href}
-              href={href}
-              className="flex flex-1 flex-col items-center gap-1 py-3 text-xs text-muted-foreground hover:text-foreground transition-colors"
-            >
-              <Icon className="h-5 w-5" aria-hidden="true" />
-              {label}
-            </Link>
-          ))}
-        </nav>
+        <BottomNav />
       </div>
     </div>
   );

@@ -5,6 +5,7 @@ from typing import Annotated, Literal, cast
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Response, UploadFile, status
+from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, Field
 
 from .. import db
@@ -207,6 +208,33 @@ async def paste_material(
     )
     background_tasks.add_task(ingest_paste_material, str(material_id), user_id, body.content)
     return _material_response(row)
+
+
+@router.get("/{material_id}/content", response_class=PlainTextResponse)
+async def get_material_content(
+    material_id: UUID,
+    user_id: Annotated[str, Depends(get_current_user_id)],
+) -> str:
+    row = await _get_material_row(str(material_id), user_id)
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Material not found")
+    if row.get("status") != "ready":
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Material is not ready yet")
+
+    connection = await db.connect()
+    try:
+        rows = await connection.fetch(
+            """
+            select content from public.chunks
+            where material_id = $1::uuid and user_id = $2::uuid and chunk_level = 'parent'
+            order by ord
+            """,
+            str(material_id),
+            user_id,
+        )
+        return "\n\n".join(str(r["content"]) for r in rows)
+    finally:
+        await connection.close()
 
 
 @router.delete("/{material_id}", status_code=status.HTTP_204_NO_CONTENT)

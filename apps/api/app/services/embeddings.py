@@ -1,21 +1,22 @@
 from collections.abc import Sequence
 
-from openai import AsyncOpenAI
+import cohere
 
 from ..settings import settings
 
-EMBEDDING_MODEL = "text-embedding-3-small"
-EMBEDDING_BATCH_SIZE = 100
+EMBEDDING_MODEL = "embed-multilingual-v3.0"
+EMBEDDING_DIM = 1024
+EMBEDDING_BATCH_SIZE = 96  # Cohere hard limit per request
 
 
 class EmbeddingService:
-    def __init__(self, client: AsyncOpenAI | None = None) -> None:
+    def __init__(self, client: cohere.AsyncClientV2 | None = None) -> None:
         if client is not None:
             self.client = client
         else:
-            if not settings.openai_api_key:
-                raise RuntimeError("OPENAI_API_KEY is not configured")
-            self.client = AsyncOpenAI(api_key=settings.openai_api_key)
+            if not settings.cohere_api_key:
+                raise RuntimeError("COHERE_API_KEY is not configured")
+            self.client = cohere.AsyncClientV2(api_key=settings.cohere_api_key)
 
     async def embed_texts(self, texts: Sequence[str]) -> list[list[float]]:
         cleaned = [text for text in texts if text.strip()]
@@ -24,10 +25,14 @@ class EmbeddingService:
 
         vectors: list[list[float]] = []
         for index in range(0, len(cleaned), EMBEDDING_BATCH_SIZE):
-            batch = cleaned[index : index + EMBEDDING_BATCH_SIZE]
-            response = await self.client.embeddings.create(
+            batch = list(cleaned[index : index + EMBEDDING_BATCH_SIZE])
+            response = await self.client.embed(
+                texts=batch,
                 model=EMBEDDING_MODEL,
-                input=list(batch),
+                input_type="search_document",
+                embedding_types=["float"],
             )
-            vectors.extend([item.embedding for item in sorted(response.data, key=lambda item: item.index)])
+            if response.embeddings.float_ is None:
+                raise RuntimeError("Cohere returned no float embeddings")
+            vectors.extend(response.embeddings.float_)
         return vectors

@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { BookOpen, MessageCircle, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -24,8 +25,14 @@ export default function Home() {
   return (
     <main className="min-h-screen px-6 py-10">
       <section className="mx-auto flex max-w-5xl flex-col gap-10">
-        <div className="max-w-3xl space-y-6">
+        <header className="flex items-center justify-between gap-4">
           <p className="text-sm font-medium uppercase tracking-wide text-muted-foreground">Ilm AI</p>
+          <Button asChild variant="secondary">
+            <Link href="/login">Kirish</Link>
+          </Button>
+        </header>
+
+        <div className="max-w-3xl space-y-6">
           <h1 className="text-4xl font-semibold tracking-normal text-foreground sm:text-5xl">
             Your AI ustoz for any material you are studying.
           </h1>
@@ -33,7 +40,9 @@ export default function Home() {
             Bring a textbook chapter, research paper, course transcript, or your own notes. Ilm AI helps
             you understand, practice, and plan in Uzbek, Russian, or English.
           </p>
-          <Button size="lg">Boshlash</Button>
+          <Button asChild size="lg">
+            <Link href="/signup">Boshlash</Link>
+          </Button>
         </div>
 
         <div className="grid gap-4 md:grid-cols-3">

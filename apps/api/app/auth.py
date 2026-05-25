@@ -1,4 +1,4 @@
-from typing import Annotated
+from typing import Annotated, Any
 
 import jwt
 from fastapi import Depends, HTTPException, status
@@ -9,7 +9,6 @@ from .settings import settings
 
 _bearer = HTTPBearer()
 
-# Module-level JWKS client — cached for the process lifetime
 _jwks_client: PyJWKClient | None = None
 
 
@@ -21,20 +20,38 @@ def _get_jwks_client() -> PyJWKClient:
     return _jwks_client
 
 
+def _decode_token(token: str) -> dict[str, Any]:
+    header = jwt.get_unverified_header(token)
+    alg = header.get("alg", "RS256")
+
+    if alg == "HS256":
+        if not settings.supabase_jwt_secret:
+            raise jwt.InvalidTokenError("SUPABASE_JWT_SECRET is not configured")
+        return jwt.decode(  # type: ignore[no-any-return]
+            token,
+            settings.supabase_jwt_secret,
+            algorithms=["HS256"],
+            audience="authenticated",
+            options={"verify_aud": True},
+        )
+
+    # Asymmetric (RS256, ES256, …) — let the JWK declare its own algorithm
+    signing_key = _get_jwks_client().get_signing_key_from_jwt(token)
+    return jwt.decode(  # type: ignore[no-any-return]
+        token,
+        signing_key.key,
+        algorithms=[signing_key.algorithm_name],
+        audience="authenticated",
+        options={"verify_aud": True},
+    )
+
+
 def get_current_user_id(
     credentials: Annotated[HTTPAuthorizationCredentials, Depends(_bearer)],
 ) -> str:
     token = credentials.credentials
     try:
-        client = _get_jwks_client()
-        signing_key = client.get_signing_key_from_jwt(token)
-        payload = jwt.decode(
-            token,
-            signing_key.key,
-            algorithms=["RS256"],
-            audience="authenticated",
-            options={"verify_aud": True},
-        )
+        payload = _decode_token(token)
         user_id: str = payload["sub"]
         return user_id
     except jwt.ExpiredSignatureError:

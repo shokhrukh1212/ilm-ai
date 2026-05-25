@@ -10,4 +10,5 @@ def database_url() -> str:
 
 
 async def connect() -> Any:
-    return await asyncpg.connect(database_url())
+    # statement_cache_size=0 is required for Supabase Transaction pooler (port 6543)
+    return await asyncpg.connect(database_url(), ssl="require", statement_cache_size=0)
