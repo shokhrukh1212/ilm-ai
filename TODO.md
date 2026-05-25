@@ -13,7 +13,7 @@
 |---|---|---|---|---|---|
 | 0 | Kickoff | done | 2026-05-24 | 2026-05-24 | Monorepo skeleton, TODO.md, env examples, local dev services |
 | 1 | Auth | done | 2026-05-25 | 2026-05-25 | Supabase Auth + dashboard shell |
-| 2 | Materials upload + RAG ingest | pending |  |  | Upload, parse, chunk, embed, store |
+| 2 | Materials upload + RAG ingest | done | 2026-05-25 | 2026-05-25 | Upload, parse, chunk, embed, store |
 | 3 | RAG chat with citations | pending |  |  | Streaming chat, retrieval, citations |
 | 4 | Quiz generator + grader | pending |  |  | Quiz UI, generation, grading |
 | 5 | Gap detection + learning plan | pending |  |  | Gaps agent and plan calendar |
@@ -106,6 +106,68 @@
   - `uv run mypy app tests` — passed.
   - `uv run pytest -q` — passed (3/3 tests).
 
+## Phase 2 — Materials upload + RAG ingest
+- Goal: Users can upload PDF/DOCX/TXT or paste text; the API parses, chunks, embeds, and stores material chunks; the library shows materials with status.
+- Files created/modified:
+  - .npmrc — hoists pdfjs-dist for react-pdf under pnpm
+  - pnpm-lock.yaml
+  - apps/web/package.json — added react-pdf and pdfjs-dist
+  - apps/web/app/(app)/layout.tsx — added Library navigation
+  - apps/web/app/(app)/dashboard/page.tsx — linked Materiallar card to Library
+  - apps/web/app/(app)/library/page.tsx — library grid, polling, empty state
+  - apps/web/app/(app)/library/[id]/page.tsx — material detail/status/delete and PDF preview shell
+  - apps/web/app/(app)/library/[id]/pdf-preview.tsx — react-pdf preview with paging
+  - apps/web/components/UploadDialog.tsx — signed upload and paste tabs
+  - apps/web/components/MaterialCard.tsx — material grid card
+  - apps/web/lib/api.ts — typed API fetch wrapper with Supabase bearer token
+  - apps/api/.env.example — added SUPABASE_STORAGE_BUCKET
+  - apps/api/pyproject.toml and apps/api/uv.lock — added langdetect and llama-index-core
+  - apps/api/app/db.py — asyncpg connection helper
+  - apps/api/app/main.py — registered materials router
+  - apps/api/app/settings.py — added Supabase storage bucket setting
+  - apps/api/app/routers/materials.py — list/detail/upload-url/upload/upload-complete/paste/delete endpoints
+  - apps/api/app/services/storage.py — Supabase Storage signed URL/upload/download/delete service
+  - apps/api/app/services/ingest.py — parse, language-detect, chunk, embed, save, status update
+  - apps/api/app/services/embeddings.py — OpenAI text-embedding-3-small batching
+  - apps/api/app/services/chunker.py — hierarchical parent/child chunking
+  - apps/api/app/services/__init__.py
+  - apps/api/migrations/0002_materials.sql — storage bucket, materials/chunks tables, RLS, HNSW, tsvector
+  - apps/api/tests/test_chunker.py
+  - apps/api/tests/test_embeddings.py
+  - apps/api/tests/test_materials_migration.py
+  - apps/api/tests/test_materials_router.py
+  - apps/api/tests/test_me.py — kept existing coverage but removed hanging TestClient pattern
+- Decisions made:
+  - Implemented both upload contracts: direct multipart `/api/v1/materials/upload` and web-first signed upload via `/upload-url` + Supabase browser upload + `/upload-complete`.
+  - Used private Supabase Storage bucket `materials`, path `user_id/material_id/filename`, 50MB limit, and PDF/DOCX/TXT MIME allowlist.
+  - Chunking parameters: parent target 1500 tokens, child target 300 tokens, overlap 60 tokens.
+  - Stored parent chunks without embeddings and child chunks with non-null OpenAI `text-embedding-3-small` vectors.
+  - Used LlamaIndex only for `SentenceSplitter`; no LlamaIndex orchestration.
+  - Used `langdetect` with `unknown` fallback for short or unparseable language samples.
+  - Used service-role API/DB writes on the backend while keeping user ownership in every material/chunk row and RLS in SQL.
+  - Added direct route-unit tests instead of FastAPI `TestClient` for new API tests because TestClient hung in this sandbox after route registration.
+- Deviations from blueprint:
+  - None intentional.
+- Blockers / manual verification still needed:
+  - Run `apps/api/migrations/0002_materials.sql` in Supabase SQL Editor after Phase 1 migration.
+  - Ensure Supabase env vars and OPENAI_API_KEY are populated before live ingest.
+  - Manual 30-page Russian PDF ingest, DB embedding inspection, signed URL preview, and delete cascade could not be verified without a configured Supabase project and OpenAI key.
+  - `pnpm --filter web build` requires network access for `next/font` Google Fonts, same as Phase 0.
+- Failed-ingest patterns observed:
+  - No live ingest failures observed because external services were not configured.
+  - Implemented failure handling for unsupported file type, empty file, no extractable text, zero chunks, missing OpenAI key, embedding count mismatch, and parser/service exceptions.
+- Env vars added:
+  - API: SUPABASE_STORAGE_BUCKET
+  - Web: no new env vars
+- Checks run:
+  - `pnpm --store-dir /tmp/pnpm-store --filter web add react-pdf pdfjs-dist` — passed with network approval.
+  - `uv --cache-dir /tmp/uv-cache sync --python 3.13 --group dev` — passed with network approval.
+  - `pnpm --filter web typecheck` — passed.
+  - `pnpm --filter web build` — passed with network approval for `next/font`.
+  - `uv --cache-dir /tmp/uv-cache run mypy app tests` — passed.
+  - `uv --cache-dir /tmp/uv-cache run pytest -q` — passed (11/11 tests).
+- Time spent: 3h 10m
+
 ## Tech stack snapshot (current)
 - Next.js 15.5.18, React 19.2.6, TypeScript 5.9.3
 - Tailwind CSS 4.3.0
@@ -113,6 +175,8 @@
 - FastAPI 0.136.3, Pydantic 2.13.4, Pydantic AI 1.102.0, uvicorn 0.48.0
 - PyJWT 2.13.0 (with cryptography 48.0.0) — Phase 1 addition
 - @supabase/ssr 0.10.3, @supabase/supabase-js 2.106.1
+- react-pdf 10.4.1, pdfjs-dist 5.7.284 — Phase 2 additions
+- llama-index-core 0.14.22, langdetect 1.0.9 — Phase 2 additions
 - Supabase project: pending (user must create)
 - Models: Claude Sonnet for tutor/planner/gaps, GPT-4o for quiz generation, OpenAI text-embedding-3-small, Cohere Rerank 3.5
 
@@ -124,7 +188,7 @@
 - GitHub CLI auth and network access must be valid in the execution environment for automated PR creation and merge.
 
 ## Next AI to read this
-- Current phase: 2
+- Current phase: 3
 - Start by reading: TODO.md + AGENTS.md + ilm-ai-comprehensive-product-blueprint-and-phased-build-plan.md
 
 ## Diary & Submission Compliance

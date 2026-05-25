@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { BookOpen, LayoutDashboard, Settings } from "lucide-react";
+import { BookOpen, LayoutDashboard, Library, Settings } from "lucide-react";
 
 import { createClient } from "@/lib/supabase/server";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -14,6 +14,7 @@ import { SignOutButton } from "@/components/nav/sign-out-button";
 
 const NAV = [
   { href: "/dashboard", label: "Bosh sahifa", icon: LayoutDashboard },
+  { href: "/library", label: "Kutubxona", icon: Library },
   { href: "/settings", label: "Sozlamalar", icon: Settings },
 ];
 
