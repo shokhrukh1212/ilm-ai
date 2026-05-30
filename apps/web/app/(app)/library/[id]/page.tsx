@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { AlertTriangle, ArrowLeft, CheckCircle2, Loader2, MessageCircle, Trash2 } from "lucide-react";
+import { AlertTriangle, ArrowLeft, CheckCircle2, GraduationCap, Loader2, MessageCircle, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -139,6 +139,19 @@ export default function MaterialDetailPage() {
               <>
                 <MessageCircle className="h-4 w-4" />
                 Chat
+              </>
+            )}
+          </Button>
+          <Button className="gap-2" disabled={material.status !== "ready"} asChild={material.status === "ready"}>
+            {material.status === "ready" ? (
+              <Link href={`/quiz/new?materialId=${material.id}`}>
+                <GraduationCap className="h-4 w-4" />
+                Mendan so&apos;rab ko&apos;r
+              </Link>
+            ) : (
+              <>
+                <GraduationCap className="h-4 w-4" />
+                Mendan so&apos;rab ko&apos;r
               </>
             )}
           </Button>
