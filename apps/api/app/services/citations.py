@@ -53,3 +53,48 @@ async def build_citations(chunks: list[RetrievedChunk]) -> list[Citation]:
         )
         for i, c in enumerate(chunks)
     ]
+
+
+async def build_citations_for_chunk_ids(chunk_ids: list[int]) -> list[Citation]:
+    """Resolve a list of chunk ids into ordered Citation objects.
+
+    Used by the quiz results endpoint to turn a question's source_chunk_ids
+    into citation chips. The index reflects the position in chunk_ids.
+    """
+    if not chunk_ids:
+        return []
+
+    connection = await db.connect()
+    try:
+        rows = await connection.fetch(
+            """
+            SELECT c.id, c.content, c.page, c.material_id::text AS material_id, m.title
+            FROM public.chunks c
+            JOIN public.materials m ON m.id = c.material_id
+            WHERE c.id = ANY($1::bigint[])
+            """,
+            chunk_ids,
+        )
+    finally:
+        await connection.close()
+
+    by_id = {int(row["id"]): row for row in rows}
+
+    citations: list[Citation] = []
+    index = 1
+    for chunk_id in chunk_ids:
+        row = by_id.get(chunk_id)
+        if row is None:
+            continue
+        citations.append(
+            Citation(
+                index=index,
+                chunk_id=chunk_id,
+                material_id=str(row["material_id"]),
+                material_title=str(row["title"]),
+                page=int(row["page"]) if row["page"] is not None else None,
+                snippet=_snippet(str(row["content"])),
+            )
+        )
+        index += 1
+    return citations

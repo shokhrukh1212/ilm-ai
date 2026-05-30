@@ -2,13 +2,14 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Library, Settings, type LucideIcon } from "lucide-react";
+import { GraduationCap, LayoutDashboard, Library, Settings, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 
 const NAV: { href: string; label: string; icon: LucideIcon }[] = [
   { href: "/dashboard", label: "Bosh sahifa", icon: LayoutDashboard },
   { href: "/library", label: "Kutubxona", icon: Library },
+  { href: "/quiz/new", label: "Mashq", icon: GraduationCap },
   { href: "/settings", label: "Sozlamalar", icon: Settings },
 ];
 

@@ -257,6 +257,110 @@ export function getChatMessages(sessionId: string): Promise<ChatMessage[]> {
   return apiFetch<ChatMessage[]>(`/chat/sessions/${sessionId}/messages`);
 }
 
+// ---------------------------------------------------------------------------
+// Quiz (Phase 4)
+// ---------------------------------------------------------------------------
+
+export type QuizDifficulty = "easy" | "medium" | "hard";
+export type QuizQuestionType = "mcq" | "open";
+
+export type QuizGenConfig = {
+  material_id: string;
+  num_questions: number;
+  difficulty: QuizDifficulty;
+  lang?: string;
+};
+
+export type QuizQuestionPublic = {
+  id: number;
+  type: QuizQuestionType;
+  prompt: string;
+  options: string[] | null;
+};
+
+export type QuizGenerateResponse = {
+  session_id: string;
+  questions: QuizQuestionPublic[];
+};
+
+export type QuizTakeView = {
+  session_id: string;
+  material_id: string;
+  lang: string | null;
+  difficulty: QuizDifficulty | null;
+  num_questions: number | null;
+  completed_at: string | null;
+  questions: QuizQuestionPublic[];
+  answered_question_ids: number[];
+};
+
+export type QuizAnswerResult = {
+  is_correct: boolean;
+  feedback: string;
+  correct_answer: string;
+  rationale: string;
+  citations: Citation[];
+};
+
+export type QuizFinishResult = {
+  score: number;
+  correct_count: number;
+  total: number;
+};
+
+export type QuizResultQuestion = {
+  id: number;
+  type: QuizQuestionType;
+  prompt: string;
+  options: string[] | null;
+  correct_answer: string;
+  rationale: string;
+  citations: Citation[];
+  user_answer: string | null;
+  is_correct: boolean | null;
+  ai_feedback: string | null;
+};
+
+export type QuizResults = {
+  session_id: string;
+  material_id: string;
+  lang: string | null;
+  difficulty: QuizDifficulty | null;
+  score: number | null;
+  correct_count: number;
+  total: number;
+  questions: QuizResultQuestion[];
+};
+
+export function generateQuiz(config: QuizGenConfig): Promise<QuizGenerateResponse> {
+  return apiFetch<QuizGenerateResponse>("/quiz/generate", {
+    method: "POST",
+    body: JSON.stringify(config),
+  });
+}
+
+export function getQuizTake(sessionId: string): Promise<QuizTakeView> {
+  return apiFetch<QuizTakeView>(`/quiz/${sessionId}`);
+}
+
+export function submitQuizAnswer(
+  sessionId: string,
+  body: { question_id: number; user_answer: string; time_spent_s?: number }
+): Promise<QuizAnswerResult> {
+  return apiFetch<QuizAnswerResult>(`/quiz/${sessionId}/answer`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export function finishQuiz(sessionId: string): Promise<QuizFinishResult> {
+  return apiFetch<QuizFinishResult>(`/quiz/${sessionId}/finish`, { method: "POST" });
+}
+
+export function getQuizResults(sessionId: string): Promise<QuizResults> {
+  return apiFetch<QuizResults>(`/quiz/${sessionId}/results`);
+}
+
 async function readError(response: Response): Promise<string> {
   try {
     const data = (await response.json()) as { detail?: unknown };

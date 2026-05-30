@@ -15,7 +15,7 @@
 | 1 | Auth | done | 2026-05-25 | 2026-05-25 | Supabase Auth + dashboard shell |
 | 2 | Materials upload + RAG ingest | done | 2026-05-25 | 2026-05-25 | Upload, parse, chunk, embed, store |
 | 3 | RAG chat with citations | done | 2026-05-25 | 2026-05-25 | Streaming chat, hybrid RRF+rerank retrieval, citation chips |
-| 4 | Quiz generator + grader | pending |  |  | Quiz UI, generation, grading, Pydantic AI structured output |
+| 4 | Quiz generator + grader | done | 2026-05-30 | 2026-05-30 | Quiz UI, GPT-4o generation, Sonnet grading, Pydantic AI structured output |
 | 5 | Gap detection + learning plan | pending |  |  | Gaps agent and plan calendar |
 | 6 | Telegram bot | pending |  |  | Webhook bot and link flow |
 | 7 | Payments | pending |  |  | Payme, Click, Stripe |
@@ -224,6 +224,55 @@
   - `pnpm --filter web build` — passed (11/11 pages, including /chat/[materialId])
 - Time spent: ~2h
 
+## Phase 4 — Quiz generator + grader
+- Goal: Generate a grounded quiz from a material, answer one question at a time with immediate AI feedback, and see a scored per-question review citing source chunks.
+- Files created/modified:
+  - apps/api/migrations/0004_quiz.sql — quiz_sessions, quiz_questions, quiz_answers + RLS (nested ownership) + indexes
+  - apps/api/app/agents/quiz_gen.py — GPT-4o Pydantic AI agent, output_type=QuizSet, exact §5 prompt, retries=2
+  - apps/api/app/agents/quiz_explainer.py — claude-sonnet-4-6 agent, output_type=Explanation{is_correct,feedback}, exact §5 prompt
+  - apps/api/app/services/quiz_sources.py — even-sampling of child chunks + build_sources_block (labeled by chunk id)
+  - apps/api/app/services/citations.py — added build_citations_for_chunk_ids()
+  - apps/api/app/routers/quiz.py — POST /generate, GET /{id}, POST /{id}/answer, POST /{id}/finish, GET /{id}/results
+  - apps/api/app/main.py — registered quiz router
+  - apps/api/tests/test_quiz_migration.py, test_quiz_gen.py, test_quiz_explainer.py, test_quiz_router.py
+  - apps/web/lib/api.ts — quiz types + generateQuiz/getQuizTake/submitQuizAnswer/finishQuiz/getQuizResults
+  - apps/web/app/(app)/quiz/new/page.tsx — config (material, count, difficulty)
+  - apps/web/app/(app)/quiz/[id]/page.tsx — in-progress quiz, progress bar, immediate feedback
+  - apps/web/app/(app)/quiz/[id]/results/page.tsx — score + per-question review + citation chips → PDF sheet
+  - apps/web/components/ui/textarea.tsx — added (shadcn-style) for open answers
+  - apps/web/components/nav/nav-links.tsx — added "Mashq" nav entry
+  - apps/web/app/(app)/dashboard/page.tsx — added Mashq card, un-staled Chat card (Phase 3 now live)
+  - apps/web/app/(app)/library/[id]/page.tsx — added "Mendan so'rab ko'r" quiz CTA
+- Decisions made:
+  - Model routing (locked rule): GPT-4o for quiz_gen (cheaper structured output), claude-sonnet-4-6 for quiz_explainer.
+    Task prompt said "Sonnet 4.5"; repo standardized on claude-sonnet-4-6 in Phase 3 (tutor) — same documented deviation.
+  - Quiz sources: even-sampling of child chunks across the whole material (cap 40), labeled by real chunks.id so
+    generated source_chunk_ids map back to real rows for citations (no search query exists for quiz generation).
+  - Pydantic AI typed outputs with retries=2 + model validators (4-option MCQ, correct∈options, open→no options)
+    so generation can never return malformed JSON to the caller.
+  - quiz_explainer returns {is_correct, feedback}: it grades open-ended answers; MCQ correctness is computed
+    deterministically (string compare) and the explainer is used only for feedback on MCQ.
+  - Exact blueprint §5 prompts used. Both prompts are per-request (placeholders), so they are formatted and
+    delivered as the run input (explainer also has the static rules as system_prompt is avoided to prevent literal braces).
+  - Answers withheld from the take view (GET /{id}) so the client cannot reveal correct answers mid-quiz.
+  - Gap-detection trigger on finish is deferred to Phase 5 (not implemented here).
+- Deviations from blueprint: model id 4.5 → 4-6 (as above). None else.
+- Blockers / manual verification needed (no live keys/Supabase in sandbox — same as Phases 2–3):
+  - Run apps/api/migrations/0004_quiz.sql in Supabase SQL Editor (after 0003).
+  - Populate OPENAI_API_KEY + ANTHROPIC_API_KEY before live quiz generation/grading.
+  - Live acceptance criteria not verifiable without keys:
+    - Generate 10 questions in <15s; MCQ with 4 options; submit → AI feedback <2s.
+    - Open-ended graded by quiz_explainer with rationale.
+    - Results page shows score + per-question review + rationale citing source chunks; quiz_sessions.score persisted.
+- Env vars added: none (OPENAI_API_KEY and ANTHROPIC_API_KEY already present from Phase 0).
+- Checks run:
+  - `uv --cache-dir /tmp/uv-cache run mypy app tests` — passed (37 source files, 0 errors)
+  - `uv --cache-dir /tmp/uv-cache run pytest -q` — passed (64/64 tests)
+  - `pnpm --filter web typecheck` — passed
+  - `pnpm --filter web build` — passed (14/14 routes incl. /quiz/new, /quiz/[id], /quiz/[id]/results); Next build ran eslint+types
+  - `pnpm --filter web lint` — N/A (no lint script in web workspace; Next build covers linting)
+- Time spent: ~2h
+
 ## Tech stack snapshot (current)
 - Next.js 15.5.18, React 19.2.6, TypeScript 5.9.3
 - Tailwind CSS 4.3.0
@@ -235,7 +284,7 @@
 - llama-index-core 0.14.22, langdetect 1.0.9 — Phase 2 additions
 - sse-starlette (explicit dep) — Phase 3 addition
 - Supabase project: pending (user must create)
-- Models: claude-sonnet-4-6 for tutor (Phase 3), GPT-4o for quiz generation, Cohere embed-multilingual-v3.0 for embeddings (1024-dim), Cohere rerank-v3.5
+- Models: claude-sonnet-4-6 for tutor (Phase 3) and quiz_explainer (Phase 4), GPT-4o for quiz generation (Phase 4), Cohere embed-multilingual-v3.0 for embeddings (1024-dim), Cohere rerank-v3.5
 
 ## Open questions
 - Supabase project must be created and env vars populated (see Phase 1 blockers above).
@@ -245,13 +294,13 @@
 - GitHub CLI auth and network access must be valid in the execution environment for automated PR creation and merge.
 
 ## Next AI to read this
-- Current phase: 4
-- Start by reading: TODO.md + AGENTS.md + ilm-ai-comprehensive-product-blueprint-and-phased-build-plan.md
+- Current phase: 5
+- Start by reading: TODO.md + CLAUDE.md + ilm-ai-comprehensive-product-blueprint-and-phased-build-plan.md
 
 ## Diary & Submission Compliance
 - Diary folder: diary/
 - Entries required: 2 per week from Week 2 onward
 - Loom required: 1 per week from Week 2 onward
 - Entry format: YYYY-MM-DD.md with 5 required sections
-- Last entry: 2026-05-24.md
+- Last entry: 2026-05-30.md
 - Entries this week: 1
