@@ -361,6 +361,79 @@ export function getQuizResults(sessionId: string): Promise<QuizResults> {
   return apiFetch<QuizResults>(`/quiz/${sessionId}/results`);
 }
 
+// ---------------------------------------------------------------------------
+// Gaps & learning plan (Phase 5)
+// ---------------------------------------------------------------------------
+
+export type GapEvidence = {
+  question_ids?: number[];
+  suggested_review?: string;
+};
+
+export type KnowledgeGap = {
+  id: number;
+  topic: string;
+  severity: number | null;
+  material_id: string | null;
+  evidence: GapEvidence | null;
+  status: string;
+  created_at: string;
+};
+
+export type PlanTaskType = "read" | "quiz" | "review" | "flashcards";
+
+export type PlanTask = {
+  type: PlanTaskType;
+  title: string;
+  estimated_minutes: number;
+  material_id: string | null;
+  gap_topic: string | null;
+  done: boolean;
+};
+
+export type PlanDay = {
+  date: string;
+  tasks: PlanTask[];
+};
+
+export type LearningPlan = {
+  id: string;
+  start_date: string | null;
+  end_date: string | null;
+  plan: PlanDay[];
+  created_at: string;
+};
+
+export type PlanGenConfig = {
+  minutes_per_day: number;
+  target_date?: string;
+};
+
+export function listGaps(): Promise<KnowledgeGap[]> {
+  return apiFetch<KnowledgeGap[]>("/gaps");
+}
+
+export function generatePlan(config: PlanGenConfig): Promise<LearningPlan> {
+  return apiFetch<LearningPlan>("/plan/generate", {
+    method: "POST",
+    body: JSON.stringify(config),
+  });
+}
+
+export function getPlan(): Promise<LearningPlan | null> {
+  return apiFetch<LearningPlan | null>("/plan");
+}
+
+export function togglePlanTask(
+  planId: string,
+  body: { date: string; task_index: number; done: boolean }
+): Promise<LearningPlan> {
+  return apiFetch<LearningPlan>(`/plan/${planId}/task`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
 async function readError(response: Response): Promise<string> {
   try {
     const data = (await response.json()) as { detail?: unknown };

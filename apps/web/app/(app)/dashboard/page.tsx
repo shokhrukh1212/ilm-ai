@@ -1,6 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { BookOpen, GraduationCap, MessageCircle } from "lucide-react";
+import { BookOpen, CalendarDays, GraduationCap, MessageCircle, Target } from "lucide-react";
 import Link from "next/link";
 
 export default async function DashboardPage() {
@@ -62,6 +62,34 @@ export default async function DashboardPage() {
             <CardDescription>
               <Link href="/quiz/new" className="text-primary underline-offset-4 hover:underline">
                 Savollar yaratib o&apos;zingizni sinang
+              </Link>
+            </CardDescription>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center gap-3 pb-2">
+            <Target className="h-5 w-5 text-primary" />
+            <CardTitle className="text-base">Kamchiliklar</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <CardDescription>
+              <Link href="/gaps" className="text-primary underline-offset-4 hover:underline">
+                Zaif mavzularingizni ko&apos;ring
+              </Link>
+            </CardDescription>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center gap-3 pb-2">
+            <CalendarDays className="h-5 w-5 text-primary" />
+            <CardTitle className="text-base">Reja</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <CardDescription>
+              <Link href="/plan" className="text-primary underline-offset-4 hover:underline">
+                7 kunlik o&apos;quv rejangizni tuzing
               </Link>
             </CardDescription>
           </CardContent>

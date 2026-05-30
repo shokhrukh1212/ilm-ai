@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Check, Loader2, RotateCcw, X } from "lucide-react";
+import { ArrowLeft, CalendarDays, Check, Loader2, RotateCcw, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -143,7 +143,13 @@ export default function QuizResultsPage() {
               Yana mashq qilish
             </Link>
           </Button>
-          <Button asChild variant="outline">
+          <Button asChild variant="outline" className="gap-2">
+            <Link href="/plan">
+              <CalendarDays className="h-4 w-4" />
+              7 kunlik reja tuzish
+            </Link>
+          </Button>
+          <Button asChild variant="ghost">
             <Link href="/library">Kutubxona</Link>
           </Button>
         </div>
