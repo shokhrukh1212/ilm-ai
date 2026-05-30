@@ -16,7 +16,7 @@
 | 2 | Materials upload + RAG ingest | done | 2026-05-25 | 2026-05-25 | Upload, parse, chunk, embed, store |
 | 3 | RAG chat with citations | done | 2026-05-25 | 2026-05-25 | Streaming chat, hybrid RRF+rerank retrieval, citation chips |
 | 4 | Quiz generator + grader | done | 2026-05-30 | 2026-05-30 | Quiz UI, GPT-4o generation, Sonnet grading, Pydantic AI structured output |
-| 5 | Gap detection + learning plan | pending |  |  | Gaps agent and plan calendar |
+| 5 | Gap detection + learning plan | done | 2026-05-30 | 2026-05-30 | gap_detect + planner agents, /gaps + /plan, BackgroundTasks trigger |
 | 6 | Telegram bot | pending |  |  | Webhook bot and link flow |
 | 7 | Payments | pending |  |  | Payme, Click, Stripe |
 | 8 | Eval + monitoring + polish | pending |  |  | Langfuse, Sentry, evals, demo |
@@ -273,6 +273,66 @@
   - `pnpm --filter web lint` — N/A (no lint script in web workspace; Next build covers linting)
 - Time spent: ~2h
 
+## Phase 5 — Gap detection + learning plan
+- Goal: After quizzes, auto-detect knowledge gaps and generate a dated, spaced-repetition learning plan targeting them.
+- Files created/modified:
+  - apps/api/migrations/0005_gaps_plans.sql — knowledge_gaps + learning_plans + RLS + indexes
+  - apps/api/app/agents/gap_detect.py — claude-sonnet-4-6, output_type=GapSet, exact §5 prompt (system_prompt), retries=2
+  - apps/api/app/agents/planner.py — claude-sonnet-4-6, output_type=LearningPlan, exact §5 prompt (formatted per-request), retries=2
+  - apps/api/app/services/gap_detection.py — run_gap_detection: 90-day history → agent → upsert/close gaps (dominant-material derivation)
+  - apps/api/app/routers/gaps.py — GET /gaps (open), POST /gaps/detect
+  - apps/api/app/routers/plan.py — POST /plan/generate, GET /plan, POST /plan/{id}/task (toggle done)
+  - apps/api/app/routers/quiz.py — finish() now enqueues run_gap_detection via BackgroundTasks
+  - apps/api/app/main.py — registered gaps + plan routers
+  - apps/api/tests/test_gaps_migration.py, test_gap_detect.py, test_planner.py, test_gaps_plan_router.py
+  - apps/web/lib/api.ts — gaps/plan types + listGaps/generatePlan/getPlan/togglePlanTask
+  - apps/web/components/GapCard.tsx — topic + 1–5 severity meter + suggested review
+  - apps/web/components/PlanDay.tsx — dated task list, type icons, done toggle
+  - apps/web/app/(app)/gaps/page.tsx — gaps grid + empty state + "Reja tuzish" CTA
+  - apps/web/app/(app)/plan/page.tsx — dated cards, "Qayta tuzish", per-task done toggle, generate config
+  - apps/web/app/(app)/dashboard/page.tsx — added Kamchiliklar + Reja cards
+  - apps/web/app/(app)/quiz/[id]/results/page.tsx — added "7 kunlik reja tuzish" CTA
+- Decisions made:
+  - Model routing (locked rule): both gap_detect and planner → Claude (claude-sonnet-4-6), same 4.5→4-6 deviation as tutor/explainer.
+  - Trigger: quiz finish enqueues gap detection (FastAPI BackgroundTasks) over the user's last-90-day quiz history; detection is async so FinishResponse shape is unchanged and gaps surface on /gaps.
+  - Upsert by normalized topic within a transaction; gaps not re-detected are set status='closed'.
+  - Gaps are global per user (history is global), with material_id derived from the dominant material among a gap's evidence questions.
+  - quiz_questions has no topic_tags column → gap_detect infers/clusters topics from the question prompt text (documented deviation from the blueprint input spec).
+  - Plan task completion stored as a `done` flag inside the plan jsonb; toggled via read-modify-write (POST /plan/{id}/task). Re-generate inserts a new learning_plans row; GET /plan returns the latest.
+  - Discoverability via dashboard cards + quiz-results CTA + /gaps↔/plan cross-links; no nav-bar change (keeps mobile 5-tab bar clean).
+- Deviations from blueprint: model id 4.5 → 4-6; topic inference instead of stored topic_tags. None else.
+- Blockers / manual verification:
+  - Run apps/api/migrations/0005_gaps_plans.sql in Supabase (after 0004).
+  - Live acceptance (keys configured): take ≥3 quizzes missing one topic ≥30% → that topic appears in /gaps at severity ≥3; POST /plan/generate returns a 7-day plan honoring minutes_per_day with spaced-repetition reviews; /plan toggle persists.
+- Sample gap JSON (expected shape from gap_detect, pending live capture):
+  ```json
+  { "gaps": [
+    { "topic": "Hujayra nafas olishi", "severity": 3,
+      "evidence_question_ids": [12, 18, 24],
+      "suggested_review": "14-18-betlarni qayta o'qing, so'ng B to'plam testini qayta yeching" }
+  ] }
+  ```
+  Stored knowledge_gaps row: evidence = {"question_ids":[12,18,24],"suggested_review":"…"}, status='open', severity=3.
+- Sample plan JSON (expected shape from planner, pending live capture):
+  ```json
+  { "plan": [
+    { "date": "2026-05-31", "tasks": [
+      { "type": "read", "title": "Hujayra nafas olishi: 14-18-betlar", "estimated_minutes": 20,
+        "material_id": "…", "gap_topic": "Hujayra nafas olishi", "done": false },
+      { "type": "quiz", "title": "5 ta savol — hujayra nafas olishi", "estimated_minutes": 10,
+        "material_id": "…", "gap_topic": "Hujayra nafas olishi", "done": false }
+    ] }
+  ] }
+  ```
+- Env vars added: none (ANTHROPIC_API_KEY already present).
+- Checks run:
+  - `uv --cache-dir /tmp/uv-cache run mypy app tests` — passed (46 source files, 0 errors)
+  - `uv --cache-dir /tmp/uv-cache run pytest -q` — passed (90/90 tests)
+  - `pnpm --filter web typecheck` — passed
+  - `pnpm --filter web build` — passed (16/16 routes incl. /gaps, /plan)
+  - `pnpm --filter web lint` — N/A (no lint script; Next build covers linting)
+- Time spent: ~2h
+
 ## Tech stack snapshot (current)
 - Next.js 15.5.18, React 19.2.6, TypeScript 5.9.3
 - Tailwind CSS 4.3.0
@@ -284,7 +344,7 @@
 - llama-index-core 0.14.22, langdetect 1.0.9 — Phase 2 additions
 - sse-starlette (explicit dep) — Phase 3 addition
 - Supabase project: pending (user must create)
-- Models: claude-sonnet-4-6 for tutor (Phase 3) and quiz_explainer (Phase 4), GPT-4o for quiz generation (Phase 4), Cohere embed-multilingual-v3.0 for embeddings (1024-dim), Cohere rerank-v3.5
+- Models: claude-sonnet-4-6 for tutor (Phase 3), quiz_explainer (Phase 4), gap_detect + planner (Phase 5); GPT-4o for quiz generation (Phase 4); Cohere embed-multilingual-v3.0 for embeddings (1024-dim), Cohere rerank-v3.5
 
 ## Open questions
 - Supabase project must be created and env vars populated (see Phase 1 blockers above).
@@ -294,7 +354,7 @@
 - GitHub CLI auth and network access must be valid in the execution environment for automated PR creation and merge.
 
 ## Next AI to read this
-- Current phase: 5
+- Current phase: 6
 - Start by reading: TODO.md + CLAUDE.md + ilm-ai-comprehensive-product-blueprint-and-phased-build-plan.md
 
 ## Diary & Submission Compliance

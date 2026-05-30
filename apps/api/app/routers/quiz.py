@@ -4,7 +4,7 @@ import logging
 from typing import Annotated, Any, Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
 from .. import db
@@ -12,6 +12,7 @@ from ..agents.quiz_explainer import explain
 from ..agents.quiz_gen import generate_quiz
 from ..auth import get_current_user_id
 from ..services.citations import build_citations_for_chunk_ids
+from ..services.gap_detection import run_gap_detection
 from ..services.quiz_sources import build_sources_block, fetch_quiz_sources
 
 logger = logging.getLogger(__name__)
@@ -388,6 +389,7 @@ async def answer(
 @router.post("/{session_id}/finish")
 async def finish(
     session_id: str,
+    background_tasks: BackgroundTasks,
     user_id: Annotated[str, Depends(get_current_user_id)],
 ) -> FinishResponse:
     connection = await db.connect()
@@ -420,6 +422,9 @@ async def finish(
         )
     finally:
         await connection.close()
+
+    # Re-analyze the learner's recent quiz history to refresh knowledge gaps.
+    background_tasks.add_task(run_gap_detection, user_id)
 
     return FinishResponse(score=score, correct_count=correct_int, total=total_int)
 
