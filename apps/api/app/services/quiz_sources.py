@@ -3,10 +3,7 @@ import math
 from .. import db
 from .retrieve import RetrievedChunk
 
-# Cap on how many child chunks we feed the quiz generator. Keeps the prompt
-# within a sane token budget (~300 tokens/chunk) so generation stays well
-# under the 15s acceptance budget.
-DEFAULT_MAX_CHUNKS = 40
+DEFAULT_MAX_CHUNKS = 20
 
 
 async def fetch_quiz_sources(

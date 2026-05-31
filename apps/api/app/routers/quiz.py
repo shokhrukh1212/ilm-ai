@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/quiz", tags=["quiz"])
 
-GENERATE_TIMEOUT_S = 15.0
+GENERATE_TIMEOUT_S = 60.0
 DEFAULT_LANG = "uz-latn"
 
 
