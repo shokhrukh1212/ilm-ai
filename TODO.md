@@ -360,10 +360,16 @@
   - Inline quiz auto-skips open-ended questions (no inline UI) and records them as incorrect-skipped so the session can finish; gap detection re-runs on session finish.
   - /debug/telegram/push is unauthenticated — test-only; must be removed/secured before production.
 - Rate-limit handling: the PTB Application uses AIORateLimiter, which throttles outbound sends to Telegram's limits (~30 msg/s) and transparently retries on 429 RetryAfter — this covers the daily broadcast. Per-user send errors in send_daily_push are caught so one failure can't abort the batch.
-- Blockers / manual verification (needs a real bot token + public URL — same sandbox limitation as Phases 2–5):
-  - Run apps/api/migrations/0006_telegram.sql in Supabase (after 0005).
-  - BotFather token + `ngrok http 8000`; set IS_TEST_MODE=False, APP_BASE_URL, TELEGRAM_BOT_TOKEN/WEBHOOK_SECRET/BOT_USERNAME; confirm setWebhook via getWebhookInfo.
-  - Live acceptance: /start greeting; web code → /link CODE populates telegram_links; POST /debug/telegram/push delivers daily plan; inline /quiz → tap option records quiz_answers + edits message with ✓/✗ + rationale.
+- Post-build adjustments (during live testing of quiz→gaps→plan):
+  - Wired OPENAI_API_KEY so the web quiz uses GPT-4o (blueprint's intended provider); resolve_provider() Anthropic fallback remains the safety net when no OpenAI key is set. Added OPENAI_API_KEY to .env.example.
+  - Raised GENERATE_TIMEOUT_S 15→60 (Claude Sonnet needs 20–40s for 10 validated questions when the fallback is active).
+  - Halved DEFAULT_MAX_CHUNKS 40→20 (~6k input tokens) to speed generation; _even_sample still spreads across the full doc.
+  - Switched the quiz explainer model claude-sonnet-4-6 → claude-haiku-4-5-20251001 (MCQ correctness is deterministic; short feedback is well within Haiku, ~5–8× faster).
+  - Rendered quiz AI feedback/rationale as markdown via a shared components/Markdown.tsx (extracted from ChatStream), so **bold**/lists display correctly.
+- Phase 6 live-setup status:
+  - [x] 0006_telegram.sql applied in Supabase (user ran it 2026-05-31).
+  - [ ] Remaining manual step ("2nd step"): BotFather token + `ngrok http 8000`; set IS_TEST_MODE=False, APP_BASE_URL=<ngrok https url>, TELEGRAM_BOT_TOKEN/WEBHOOK_SECRET/BOT_USERNAME; start uvicorn (lifespan auto-calls setWebhook); confirm via getWebhookInfo. Steps in apps/api/README.md.
+  - [ ] Live acceptance (after the step above): /start greeting; web code → /link CODE populates telegram_links; POST /debug/telegram/push delivers daily plan; inline /quiz → tap option records quiz_answers + edits message with ✓/✗ + rationale.
 - Env vars added: TELEGRAM_BOT_USERNAME (api), NEXT_PUBLIC_TELEGRAM_BOT_USERNAME (web). TELEGRAM_DAILY_PUSH_HOUR / TELEGRAM_TZ have safe defaults.
 - Checks run:
   - `uv run mypy app tests` — passed (59 source files, 0 errors)
