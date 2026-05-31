@@ -434,6 +434,35 @@ export function togglePlanTask(
   });
 }
 
+// ---------------------------------------------------------------------------
+// Telegram (Phase 6)
+// ---------------------------------------------------------------------------
+
+export type TelegramLinkStart = {
+  code: string;
+  bot_username: string;
+};
+
+export type TelegramStatus = {
+  linked: boolean;
+  opt_in_daily: boolean;
+};
+
+export function startTelegramLink(): Promise<TelegramLinkStart> {
+  return apiFetch<TelegramLinkStart>("/telegram/link/start", { method: "POST" });
+}
+
+export function getTelegramStatus(): Promise<TelegramStatus> {
+  return apiFetch<TelegramStatus>("/telegram/link/status");
+}
+
+export function setTelegramOptIn(optIn: boolean): Promise<TelegramStatus> {
+  return apiFetch<TelegramStatus>("/telegram/link/opt-in", {
+    method: "POST",
+    body: JSON.stringify({ opt_in: optIn }),
+  });
+}
+
 async function readError(response: Response): Promise<string> {
   try {
     const data = (await response.json()) as { detail?: unknown };

@@ -23,6 +23,9 @@ class Settings(BaseSettings):
 
     telegram_bot_token: str = ""
     telegram_webhook_secret: str = ""
+    telegram_bot_username: str = ""
+    telegram_daily_push_hour: int = 9
+    telegram_tz: str = "Asia/Tashkent"
 
     payme_id: str = ""
     payme_key: str = ""

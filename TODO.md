@@ -17,7 +17,7 @@
 | 3 | RAG chat with citations | done | 2026-05-25 | 2026-05-25 | Streaming chat, hybrid RRF+rerank retrieval, citation chips |
 | 4 | Quiz generator + grader | done | 2026-05-30 | 2026-05-30 | Quiz UI, GPT-4o generation, Sonnet grading, Pydantic AI structured output |
 | 5 | Gap detection + learning plan | done | 2026-05-30 | 2026-05-30 | gap_detect + planner agents, /gaps + /plan, BackgroundTasks trigger |
-| 6 | Telegram bot | pending |  |  | Webhook bot and link flow |
+| 6 | Telegram bot | done | 2026-05-31 | 2026-05-31 | Webhook bot, link flow, daily push, inline quiz, AIORateLimiter |
 | 7 | Payments | pending |  |  | Payme, Click, Stripe |
 | 8 | Eval + monitoring + polish | pending |  |  | Langfuse, Sentry, evals, demo |
 
@@ -333,6 +333,45 @@
   - `pnpm --filter web lint` — N/A (no lint script; Next build covers linting)
 - Time spent: ~2h
 
+## Phase 6 — Telegram bot
+- Goal: A python-telegram-bot v21 bot in webhook mode inside the FastAPI process, with a web→bot link flow, a daily 9am Asia/Tashkent plan push, and an inline-keyboard MCQ quiz that records answers to the same DB the web app uses.
+- Files created/modified:
+  - apps/api/migrations/0006_telegram.sql — telegram_links table (unique chat id, one_time_code, lang, opt_in_daily) + RLS + indexes
+  - apps/api/app/settings.py — telegram_bot_username, telegram_daily_push_hour (9), telegram_tz (Asia/Tashkent)
+  - apps/api/app/services/telegram_service.py — all bot/link DB access: code create/redeem, status, opt-in, language resolve/set, today's tasks, streak, opt-in users, in-bot quiz answer recording
+  - apps/api/app/services/quiz_session.py — shared create_quiz_session(...) extracted from the quiz router; persists quiz_sessions + quiz_questions; raises QuizSourcesEmpty
+  - apps/api/app/agents/quiz_gen.py — Anthropic provider variant (claude-sonnet-4-6) + resolve_provider() auto-fallback to Anthropic when OPENAI_API_KEY is empty
+  - apps/api/app/routers/quiz.py — generate() refactored to call create_quiz_session (provider="openai", which auto-falls-back)
+  - apps/api/app/telegram/{__init__,strings,handlers,bot,scheduler}.py — i18n copy (uz-latn/uz-cyrl/ru/en), command + callback handlers, Application factory with AIORateLimiter, APScheduler daily push
+  - apps/api/app/routers/telegram_link.py — POST /telegram/link/start, GET /telegram/link/status, POST /telegram/link/opt-in
+  - apps/api/app/main.py — lifespan builds PTB app + set_webhook + scheduler (skipped in test mode / no token); POST /webhooks/telegram/{secret} (path + X-Telegram-Bot-Api-Secret-Token verification); POST /debug/telegram/push
+  - apps/api/pyproject.toml — python-telegram-bot[rate-limiter]==21.* (adds aiolimiter 1.2.1)
+  - apps/api/README.md — ngrok local-dev + daily-push debug docs
+  - apps/api/.env.example — TELEGRAM_BOT_USERNAME
+  - apps/web/lib/api.ts — startTelegramLink/getTelegramStatus/setTelegramOptIn + types
+  - apps/web/app/(app)/telegram/page.tsx — link code + copy + t.me deep link + opt-in toggle
+  - apps/web/components/nav/nav-links.tsx — Telegram as 5th nav tab; apps/web/app/(app)/dashboard/page.tsx — Telegram card
+  - apps/web/.env.example — NEXT_PUBLIC_TELEGRAM_BOT_USERNAME
+  - apps/api/tests/test_telegram_{migration,service,link_router,webhook}.py, test_quiz_gen_provider.py
+- Decisions / deviations:
+  - In-bot quiz generates fresh via Claude (provider="anthropic"); the web router asks for "openai" but resolve_provider() auto-falls-back to Anthropic when no OpenAI key is set, so quiz→gaps→plan works end-to-end with only ANTHROPIC_API_KEY (user constraint: only the Anthropic key is configured).
+  - Bot in webhook mode via FastAPI lifespan; entirely skipped when IS_TEST_MODE or no TELEGRAM_BOT_TOKEN, so the sandbox/tests never hit the network.
+  - /lang persists only for a linked chat (telegram_links.lang); unlinked chats default to uz-latn. Documented simplification.
+  - Inline quiz auto-skips open-ended questions (no inline UI) and records them as incorrect-skipped so the session can finish; gap detection re-runs on session finish.
+  - /debug/telegram/push is unauthenticated — test-only; must be removed/secured before production.
+- Rate-limit handling: the PTB Application uses AIORateLimiter, which throttles outbound sends to Telegram's limits (~30 msg/s) and transparently retries on 429 RetryAfter — this covers the daily broadcast. Per-user send errors in send_daily_push are caught so one failure can't abort the batch.
+- Blockers / manual verification (needs a real bot token + public URL — same sandbox limitation as Phases 2–5):
+  - Run apps/api/migrations/0006_telegram.sql in Supabase (after 0005).
+  - BotFather token + `ngrok http 8000`; set IS_TEST_MODE=False, APP_BASE_URL, TELEGRAM_BOT_TOKEN/WEBHOOK_SECRET/BOT_USERNAME; confirm setWebhook via getWebhookInfo.
+  - Live acceptance: /start greeting; web code → /link CODE populates telegram_links; POST /debug/telegram/push delivers daily plan; inline /quiz → tap option records quiz_answers + edits message with ✓/✗ + rationale.
+- Env vars added: TELEGRAM_BOT_USERNAME (api), NEXT_PUBLIC_TELEGRAM_BOT_USERNAME (web). TELEGRAM_DAILY_PUSH_HOUR / TELEGRAM_TZ have safe defaults.
+- Checks run:
+  - `uv run mypy app tests` — passed (59 source files, 0 errors)
+  - `uv run pytest -q` — passed (121/121 tests)
+  - `pnpm --filter web typecheck` — passed
+  - `pnpm --filter web build` — passed (15/15 routes incl. /telegram)
+- Time spent: ~2.5h
+
 ## Tech stack snapshot (current)
 - Next.js 15.5.18, React 19.2.6, TypeScript 5.9.3
 - Tailwind CSS 4.3.0
@@ -343,8 +382,9 @@
 - react-pdf 10.4.1, pdfjs-dist 5.7.284 — Phase 2 additions
 - llama-index-core 0.14.22, langdetect 1.0.9 — Phase 2 additions
 - sse-starlette (explicit dep) — Phase 3 addition
+- python-telegram-bot[rate-limiter] 21.* + aiolimiter 1.2.1, APScheduler 3.x — Phase 6 additions
 - Supabase project: pending (user must create)
-- Models: claude-sonnet-4-6 for tutor (Phase 3), quiz_explainer (Phase 4), gap_detect + planner (Phase 5); GPT-4o for quiz generation (Phase 4); Cohere embed-multilingual-v3.0 for embeddings (1024-dim), Cohere rerank-v3.5
+- Models: claude-sonnet-4-6 for tutor (Phase 3), quiz_explainer (Phase 4), gap_detect + planner (Phase 5), and quiz generation (Phase 6 in-bot + web auto-fallback when no OpenAI key); GPT-4o for quiz generation when OPENAI_API_KEY is set (Phase 4); Cohere embed-multilingual-v3.0 for embeddings (1024-dim), Cohere rerank-v3.5
 
 ## Open questions
 - Supabase project must be created and env vars populated (see Phase 1 blockers above).
@@ -354,7 +394,7 @@
 - GitHub CLI auth and network access must be valid in the execution environment for automated PR creation and merge.
 
 ## Next AI to read this
-- Current phase: 6
+- Current phase: 7 (pending) — Payments (Payme, Click, Stripe)
 - Start by reading: TODO.md + CLAUDE.md + ilm-ai-comprehensive-product-blueprint-and-phased-build-plan.md
 
 ## Diary & Submission Compliance
@@ -362,5 +402,5 @@
 - Entries required: 2 per week from Week 2 onward
 - Loom required: 1 per week from Week 2 onward
 - Entry format: YYYY-MM-DD.md with 5 required sections
-- Last entry: 2026-05-30.md
-- Entries this week: 1
+- Last entry: 2026-05-31.md
+- Entries this week: 2

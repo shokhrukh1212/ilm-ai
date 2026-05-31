@@ -2,10 +2,16 @@ from typing import Literal
 
 from pydantic import BaseModel, model_validator
 from pydantic_ai import Agent
+from pydantic_ai.models.anthropic import AnthropicModel
 from pydantic_ai.models.openai import OpenAIChatModel
+from pydantic_ai.providers.anthropic import AnthropicProvider
 from pydantic_ai.providers.openai import OpenAIProvider
 
+QuizProvider = Literal["openai", "anthropic"]
+
 QUIZ_GEN_MODEL = "gpt-4o"
+# Anthropic fallback used where no OpenAI key is configured (e.g. the Telegram bot).
+QUIZ_GEN_MODEL_ANTHROPIC = "claude-sonnet-4-6"
 QUIZ_GEN_PROMPT_VARIANT = "quizgen-v1"
 
 # Up to 2 retries on validation failure (3 attempts total). Malformed JSON or a
@@ -70,9 +76,25 @@ class QuizSet(BaseModel):
 
 
 _quiz_gen_agent: Agent[None, QuizSet] | None = None
+_quiz_gen_agent_anthropic: Agent[None, QuizSet] | None = None
 
 
-def get_quiz_gen_agent() -> Agent[None, QuizSet]:
+def resolve_provider(provider: QuizProvider) -> QuizProvider:
+    """Fall back to Anthropic when an OpenAI request has no key configured.
+
+    Lets quiz generation "just work" with whichever key is set: the web router
+    asks for "openai" but transparently uses Claude when OPENAI_API_KEY is empty.
+    """
+    from ..settings import settings
+
+    if provider == "openai" and not settings.openai_api_key:
+        return "anthropic"
+    return provider
+
+
+def get_quiz_gen_agent(provider: QuizProvider = "openai") -> Agent[None, QuizSet]:
+    if resolve_provider(provider) == "anthropic":
+        return _get_quiz_gen_agent_anthropic()
     global _quiz_gen_agent
     if _quiz_gen_agent is None:
         from ..settings import settings
@@ -86,6 +108,22 @@ def get_quiz_gen_agent() -> Agent[None, QuizSet]:
             retries=QUIZ_GEN_RETRIES,
         )
     return _quiz_gen_agent
+
+
+def _get_quiz_gen_agent_anthropic() -> Agent[None, QuizSet]:
+    global _quiz_gen_agent_anthropic
+    if _quiz_gen_agent_anthropic is None:
+        from ..settings import settings
+        model = AnthropicModel(
+            QUIZ_GEN_MODEL_ANTHROPIC,
+            provider=AnthropicProvider(api_key=settings.anthropic_api_key),
+        )
+        _quiz_gen_agent_anthropic = Agent(
+            model,
+            output_type=QuizSet,
+            retries=QUIZ_GEN_RETRIES,
+        )
+    return _quiz_gen_agent_anthropic
 
 
 def build_quiz_gen_prompt(
@@ -107,7 +145,8 @@ async def generate_quiz(
     lang: str,
     difficulty: str,
     sources_block: str,
+    provider: QuizProvider = "openai",
 ) -> QuizSet:
     prompt = build_quiz_gen_prompt(n, lang, difficulty, sources_block)
-    result = await get_quiz_gen_agent().run(prompt)
+    result = await get_quiz_gen_agent(provider).run(prompt)
     return result.output
