@@ -18,7 +18,7 @@
 | 4 | Quiz generator + grader | done | 2026-05-30 | 2026-05-30 | Quiz UI, GPT-4o generation, Sonnet grading, Pydantic AI structured output |
 | 5 | Gap detection + learning plan | done | 2026-05-30 | 2026-05-30 | gap_detect + planner agents, /gaps + /plan, BackgroundTasks trigger |
 | 6 | Telegram bot | done | 2026-05-31 | 2026-05-31 | Webhook bot, link flow, daily push, inline quiz, AIORateLimiter |
-| 7 | Payments | done | 2026-05-31 | 2026-05-31 | Native Payme JSON-RPC + Click MD5 + Stripe Checkout; billing/pricing UI, PaywallModal |
+| 7 | Payments | done | 2026-05-31 | 2026-05-31 | Native Payme JSON-RPC + Click MD5 + Lemon Squeezy (MoR, replaces Stripe); billing/pricing UI, PaywallModal |
 | 8 | Eval + monitoring + polish | pending |  |  | Langfuse, Sentry, evals, demo |
 
 ## Phase 0 — Kickoff
@@ -380,20 +380,22 @@
 
 ## Phase 7 — Payments
 - Goal: Paid tiers (Talaba 29k UZS, Pro 79k, Team 199k) via Payme + Click (UZS) and
-  Stripe (card). A sandbox payment activates the Talaba tier and it surfaces in /billing.
+  Lemon Squeezy (international card). A sandbox payment activates the Talaba tier and it
+  surfaces in /billing.
 - Files created/modified:
   - apps/api/migrations/0007_billing.sql — subscriptions + payment_transactions + RLS + idempotent (provider, provider_tx_id) unique index
-  - apps/api/app/settings.py — stripe_price_talaba/pro; price_talaba/pro/team_uzs (for amount validation)
+  - apps/api/app/settings.py — lemonsqueezy_api_key/store_id/webhook_secret/variant_talaba/variant_pro; price_talaba/pro/team_uzs (for amount validation)
   - apps/api/app/services/billing.py — activate/deactivate/cancel_at_period_end, record_transaction (upsert), get_transaction (Payme state), get_subscription, user_exists; plan→tier + plan→price maps
-  - apps/api/app/routers/billing.py — POST /api/v1/billing/checkout (payme/click/stripe URL), POST /cancel, GET /billing
+  - apps/api/app/routers/billing.py — POST /api/v1/billing/checkout (payme/click/lemonsqueezy URL), POST /cancel, GET /billing
   - apps/api/app/routers/webhooks_payme.py — native JSON-RPC 2.0 (6 methods), Basic-Auth Paycom:{key}, tiyin→UZS, Payme error codes
   - apps/api/app/routers/webhooks_click.py — native Prepare/Complete, MD5 sign verified BEFORE any DB write
-  - apps/api/app/routers/webhooks_stripe.py — construct_event sig verify; checkout.session.completed → activate, customer.subscription.deleted → deactivate, .updated → period rollover
-  - apps/api/app/main.py — registered billing + 3 webhook routers (bare /webhooks/*, no /api/v1 prefix); stripe.api_key init from settings
-  - apps/api/.env.example — STRIPE_PRICE_TALABA, STRIPE_PRICE_PRO
-  - apps/api/tests/test_billing_migration.py, test_billing_service.py, test_webhooks_payme.py, test_webhooks_click.py, test_webhooks_stripe.py
+  - apps/api/app/routers/webhooks_lemonsqueezy.py — X-Signature HMAC-SHA256 verify; subscription_created/updated → activate, subscription_expired → deactivate, subscription_cancelled → recorded (access kept until expiry)
+  - apps/api/app/main.py — registered billing + 3 webhook routers (bare /webhooks/*, no /api/v1 prefix)
+  - apps/api/.env.example — LEMONSQUEEZY_API_KEY/STORE_ID/WEBHOOK_SECRET/VARIANT_TALABA/VARIANT_PRO
+  - apps/api/pyproject.toml — removed `stripe` dep (Lemon Squeezy uses httpx + HMAC, both already present)
+  - apps/api/tests/test_billing_migration.py, test_billing_service.py, test_webhooks_payme.py, test_webhooks_click.py, test_webhooks_lemonsqueezy.py
   - apps/web/lib/api.ts — Tier/Subscription/BillingStatus/UserProfile types; getMe, getBilling, startCheckout, cancelSubscription
-  - apps/web/app/pricing/page.tsx — PUBLIC 4-tier pricing; Upgrade picks provider (Payme/Click/Stripe buttons)
+  - apps/web/app/pricing/page.tsx — PUBLIC 4-tier pricing; Upgrade picks provider (Payme/Click/card→Lemon Squeezy)
   - apps/web/app/(app)/billing/page.tsx — current tier/status/period end + Cancel (cancel_at_period_end)
   - apps/web/components/PaywallModal.tsx — presentational soft paywall + useTier() helper
   - apps/web/app/(app)/dashboard/page.tsx — added "Tarif" card
@@ -411,37 +413,45 @@
 - Other decisions:
   - Free-tier usage metering (3 docs / 30 msgs/day / 4 quizzes) DEFERRED to Phase 8 (user-confirmed).
     PaywallModal ships presentational + a useTier() gate hook; no backend counting yet.
-  - Stripe uses env price IDs (STRIPE_PRICE_TALABA / STRIPE_PRICE_PRO), created manually in the
-    Stripe dashboard, per blueprint line_items[{price: ...}] pattern (user-confirmed).
-  - account/user mapping: Payme `account.user_id`, Click `merchant_trans_id`, Stripe
-    `client_reference_id`/metadata all carry the Supabase user id.
+  - DEVIATION #2 (user-confirmed): the blueprint specifies **Stripe** for international cards, but
+    Stripe does not onboard UZ-based businesses. Replaced Stripe entirely with **Lemon Squeezy**
+    (a Merchant of Record that supports UZ sellers and handles international cards + tax). Same
+    role, 1:1 swap — still three rails total (Payme, Click, Lemon Squeezy). `stripe` dep removed.
+  - Lemon Squeezy uses env variant IDs (LEMONSQUEEZY_VARIANT_TALABA / _PRO) + LEMONSQUEEZY_STORE_ID;
+    checkout created via POST /v1/checkouts with checkout_data.custom.user_id (user-confirmed).
+  - account/user mapping: Payme `account.user_id`, Click `merchant_trans_id`, Lemon Squeezy
+    `meta.custom_data.user_id` all carry the Supabase user id.
   - amount_uzs stored as integer UZS (NOT tiyin); Payme handler divides incoming tiyin by 100.
   - Provider selection on /pricing is via explicit buttons (Payme / Click / card), not IP-geo.
 - Webhook URLs to configure in each merchant cabinet (replace APP_BASE_URL):
-  - Payme:  {APP_BASE_URL}/webhooks/payme   (HTTP Basic auth Paycom:{PAYME_KEY}; account field = user_id)
-  - Click:  {APP_BASE_URL}/webhooks/click/prepare  and  {APP_BASE_URL}/webhooks/click/complete
-  - Stripe: {APP_BASE_URL}/webhooks/stripe  (events: checkout.session.completed,
-            customer.subscription.updated, customer.subscription.deleted)
+  - Payme:        {APP_BASE_URL}/webhooks/payme   (HTTP Basic auth Paycom:{PAYME_KEY}; account field = user_id)
+  - Click:        {APP_BASE_URL}/webhooks/click/prepare  and  {APP_BASE_URL}/webhooks/click/complete
+  - Lemon Squeezy:{APP_BASE_URL}/webhooks/lemonsqueezy  (events: subscription_created,
+                  subscription_updated, subscription_expired, subscription_cancelled; signing secret = LEMONSQUEEZY_WEBHOOK_SECRET)
 - Blockers / manual verification needed (no merchant sandbox creds in this environment — same
   pattern as Phases 2–6):
   - Run apps/api/migrations/0007_billing.sql in Supabase SQL Editor (after 0006).
-  - Create Stripe products/prices; set STRIPE_PRICE_TALABA / STRIPE_PRICE_PRO + STRIPE_SECRET_KEY
-    + STRIPE_WEBHOOK_SECRET. Configure Payme (PAYME_ID/PAYME_KEY) + Click
-    (CLICK_SERVICE_ID/MERCHANT_ID/MERCHANT_USER_ID/SECRET_KEY) merchant cabinets with the URLs above.
+  - Create a Lemon Squeezy store + two subscription products; set LEMONSQUEEZY_API_KEY,
+    LEMONSQUEEZY_STORE_ID, LEMONSQUEEZY_WEBHOOK_SECRET, LEMONSQUEEZY_VARIANT_TALABA/_PRO.
+    Configure Payme (PAYME_ID/PAYME_KEY) + Click (CLICK_SERVICE_ID/MERCHANT_ID/MERCHANT_USER_ID/
+    SECRET_KEY) merchant cabinets with the URLs above.
   - Live acceptance criteria NOT verifiable here (need merchant sandboxes):
     - Payme test cabinet sandbox payment activates Talaba; /billing shows it within 30s.
     - Click sandbox Prepare + Complete both return error=0; subscription activates.
-    - Stripe test-mode payment activates; cancel works.
+    - Lemon Squeezy test-mode payment activates; cancel works.
   - Acceptance criteria verified by unit tests instead:
     - Invalid Click MD5 sign → error=-1 with NO DB write (record/user_exists not awaited).
     - Payme bad Basic Auth → -32504; CheckPerformTransaction amount mismatch → -31001;
       PerformTransaction → activate_subscription(plan='talaba').
-    - Stripe invalid signature → 400; checkout.completed → activate; subscription.deleted → deactivate.
+    - Lemon Squeezy invalid X-Signature → 400 (no activate); subscription_created → activate;
+      subscription_expired → deactivate; subscription_cancelled → recorded, access kept.
     - All three providers write to payment_transactions via record_transaction.
-- Env vars added (names only): STRIPE_PRICE_TALABA, STRIPE_PRICE_PRO (api). Web: none new.
+- Env vars added (names only): LEMONSQUEEZY_API_KEY, LEMONSQUEEZY_STORE_ID,
+  LEMONSQUEEZY_WEBHOOK_SECRET, LEMONSQUEEZY_VARIANT_TALABA, LEMONSQUEEZY_VARIANT_PRO (api).
+  Removed: STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET. Web: none new.
 - Checks run:
   - `uv run mypy app tests` — passed (69 source files, 0 errors)
-  - `uv run pytest -q` — passed (142/142 tests; +21 new)
+  - `uv run pytest -q` — passed (144/144 tests)
   - `pnpm --filter web typecheck` — passed
   - `pnpm --filter web build` — passed (17/17 routes incl. /pricing public + /billing)
 
@@ -456,7 +466,7 @@
 - llama-index-core 0.14.22, langdetect 1.0.9 — Phase 2 additions
 - sse-starlette (explicit dep) — Phase 3 addition
 - python-telegram-bot[rate-limiter] 21.* + aiolimiter 1.2.1, APScheduler 3.x — Phase 6 additions
-- stripe 14.x (Phase 7); Payme + Click implemented natively (no paytechuz — see Phase 7 deviation)
+- Payme + Click + Lemon Squeezy (Phase 7), all implemented natively (no paytechuz, no stripe — see Phase 7 deviations)
 - Supabase project: pending (user must create)
 - Models: claude-sonnet-4-6 for tutor (Phase 3), quiz_explainer (Phase 4), gap_detect + planner (Phase 5), and quiz generation (Phase 6 in-bot + web auto-fallback when no OpenAI key); GPT-4o for quiz generation when OPENAI_API_KEY is set (Phase 4); Cohere embed-multilingual-v3.0 for embeddings (1024-dim), Cohere rerank-v3.5
 

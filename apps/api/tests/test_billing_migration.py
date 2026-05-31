@@ -8,7 +8,7 @@ def test_billing_migration_tables_and_rls() -> None:
     assert "create table if not exists public.payment_transactions" in sql
 
     # subscriptions shape
-    assert "provider text check (provider in ('payme', 'click', 'stripe'))" in sql
+    assert "provider text check (provider in ('payme', 'click', 'lemonsqueezy'))" in sql
     assert "plan text check (plan in ('talaba', 'pro', 'team'))" in sql
     assert "current_period_end timestamptz" in sql
 

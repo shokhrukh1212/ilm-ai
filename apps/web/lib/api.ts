@@ -468,7 +468,7 @@ export function setTelegramOptIn(optIn: boolean): Promise<TelegramStatus> {
 // ---------------------------------------------------------------------------
 
 export type Tier = "free" | "talaba" | "pro" | "team";
-export type PaymentProvider = "payme" | "click" | "stripe";
+export type PaymentProvider = "payme" | "click" | "lemonsqueezy";
 export type PaidPlan = "talaba" | "pro" | "team";
 
 export type UserProfile = {

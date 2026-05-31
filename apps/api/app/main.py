@@ -3,7 +3,6 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Annotated
 
-import stripe
 from fastapi import FastAPI, Header, HTTPException, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from telegram import Update
@@ -18,13 +17,10 @@ from .routers import (
     quiz,
     telegram_link,
     webhooks_click,
+    webhooks_lemonsqueezy,
     webhooks_payme,
-    webhooks_stripe,
 )
 from .settings import settings
-
-if settings.stripe_secret_key:
-    stripe.api_key = settings.stripe_secret_key
 from .telegram.bot import build_application
 from .telegram.scheduler import send_daily_push, start_scheduler
 
@@ -99,7 +95,7 @@ app.include_router(telegram_link.router)
 app.include_router(billing.router)
 app.include_router(webhooks_payme.router)
 app.include_router(webhooks_click.router)
-app.include_router(webhooks_stripe.router)
+app.include_router(webhooks_lemonsqueezy.router)
 
 
 @app.get("/health")

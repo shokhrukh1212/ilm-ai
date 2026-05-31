@@ -147,10 +147,10 @@ export default function PricingPage() {
                   <Button
                     variant="ghost"
                     className="w-full gap-2"
-                    onClick={() => upgrade(plan.id as PaidPlan, "stripe")}
+                    onClick={() => upgrade(plan.id as PaidPlan, "lemonsqueezy")}
                     disabled={pending !== null}
                   >
-                    {pending === `${plan.id}:stripe` ? (
+                    {pending === `${plan.id}:lemonsqueezy` ? (
                       <Loader2 className="h-4 w-4 animate-spin" />
                     ) : (
                       <>

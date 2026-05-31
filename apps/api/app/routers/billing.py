@@ -1,7 +1,7 @@
 """Authenticated billing endpoints: start checkout, cancel, read current subscription.
 
 Checkout returns a redirect URL the browser opens. Tier activation happens
-asynchronously in the provider webhooks (webhooks_payme/click/stripe), never here.
+asynchronously in the provider webhooks (webhooks_payme/click/lemonsqueezy), never here.
 """
 
 import base64
@@ -11,7 +11,6 @@ from typing import Annotated, Any, Literal
 from urllib.parse import urlencode
 
 import httpx
-import stripe
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 
@@ -23,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/billing", tags=["billing"])
 
-Provider = Literal["payme", "click", "stripe"]
+Provider = Literal["payme", "click", "lemonsqueezy"]
 Plan = Literal["talaba", "pro", "team"]
 
 
@@ -49,15 +48,17 @@ class BillingStatus(BaseModel):
     subscription: SubscriptionOut | None
 
 
-# Maps each plan to the Stripe price id env var.
-_STRIPE_PRICE_FOR_PLAN: dict[str, str] = {
-    "talaba": settings.stripe_price_talaba,
-    "pro": settings.stripe_price_pro,
+# Maps each plan to its Lemon Squeezy variant id env var.
+_LS_VARIANT_FOR_PLAN: dict[str, str] = {
+    "talaba": settings.lemonsqueezy_variant_talaba,
+    "pro": settings.lemonsqueezy_variant_pro,
 }
+
+LEMONSQUEEZY_API = "https://api.lemonsqueezy.com/v1/checkouts"
 
 
 async def _user_email(user_id: str) -> str | None:
-    """Best-effort email for the Stripe customer (non-fatal if unavailable)."""
+    """Best-effort email to prefill the Lemon Squeezy checkout (non-fatal if absent)."""
     url = f"{settings.supabase_url}/rest/v1/users"
     headers = {
         "apikey": settings.supabase_service_role_key,
@@ -99,32 +100,56 @@ def _click_checkout_url(user_id: str, amount_uzs: int) -> str:
     return f"https://my.click.uz/services/pay?{query}"
 
 
-async def _stripe_checkout_url(user_id: str, plan: str) -> str:
-    price_id = _STRIPE_PRICE_FOR_PLAN.get(plan)
-    if not price_id:
+async def _lemonsqueezy_checkout_url(user_id: str, plan: str) -> str:
+    variant_id = _LS_VARIANT_FOR_PLAN.get(plan)
+    if not variant_id or not settings.lemonsqueezy_store_id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Stripe price for plan '{plan}' is not configured",
+            detail=f"Lemon Squeezy variant for plan '{plan}' is not configured",
         )
-    kwargs: dict[str, Any] = {
-        "mode": "subscription",
-        "line_items": [{"price": price_id, "quantity": 1}],
-        "success_url": f"{settings.frontend_url}/billing?status=success",
-        "cancel_url": f"{settings.frontend_url}/pricing?status=cancelled",
-        "client_reference_id": user_id,
-        "metadata": {"user_id": user_id, "plan": plan},
-        "subscription_data": {"metadata": {"user_id": user_id, "plan": plan}},
-    }
+
+    checkout_data: dict[str, Any] = {"custom": {"user_id": user_id, "plan": plan}}
     email = await _user_email(user_id)
     if email:
-        kwargs["customer_email"] = email
-    session: Any = stripe.checkout.Session.create(**kwargs)
-    if not session.url:
+        checkout_data["email"] = email
+
+    body = {
+        "data": {
+            "type": "checkouts",
+            "attributes": {
+                "checkout_data": checkout_data,
+                "product_options": {
+                    "redirect_url": f"{settings.frontend_url}/billing?status=success",
+                },
+            },
+            "relationships": {
+                "store": {
+                    "data": {"type": "stores", "id": settings.lemonsqueezy_store_id}
+                },
+                "variant": {"data": {"type": "variants", "id": variant_id}},
+            },
+        }
+    }
+    headers = {
+        "Authorization": f"Bearer {settings.lemonsqueezy_api_key}",
+        "Accept": "application/vnd.api+json",
+        "Content-Type": "application/vnd.api+json",
+    }
+    async with httpx.AsyncClient() as client:
+        resp = await client.post(LEMONSQUEEZY_API, json=body, headers=headers)
+    if resp.status_code >= 300:
+        logger.error("Lemon Squeezy checkout failed: %s %s", resp.status_code, resp.text)
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="Stripe did not return a checkout URL",
+            detail="Could not create Lemon Squeezy checkout",
         )
-    return str(session.url)
+    url = resp.json().get("data", {}).get("attributes", {}).get("url")
+    if not url:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Lemon Squeezy did not return a checkout URL",
+        )
+    return str(url)
 
 
 @router.post("/checkout")
@@ -132,8 +157,8 @@ async def checkout(
     req: CheckoutRequest,
     user_id: Annotated[str, Depends(get_current_user_id)],
 ) -> CheckoutResponse:
-    if req.provider == "stripe":
-        return CheckoutResponse(url=await _stripe_checkout_url(user_id, req.plan))
+    if req.provider == "lemonsqueezy":
+        return CheckoutResponse(url=await _lemonsqueezy_checkout_url(user_id, req.plan))
 
     amount_uzs = billing.price_uzs_for_plan(req.plan)
     if amount_uzs is None:
