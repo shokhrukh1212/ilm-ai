@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { CitationChip } from "@/components/CitationChip";
+import { Markdown } from "@/components/Markdown";
 import { PdfPreview } from "@/components/PdfPreview";
 import {
   getMaterial,
@@ -110,12 +111,16 @@ export default function QuizResultsPage() {
                 </div>
 
                 {q.ai_feedback && (
-                  <p className="pl-7 text-sm leading-relaxed">{q.ai_feedback}</p>
+                  <div className="pl-7 text-sm leading-relaxed">
+                    <Markdown>{q.ai_feedback}</Markdown>
+                  </div>
                 )}
 
                 {q.rationale && (
                   <div className="pl-7 text-sm">
-                    <p className="leading-relaxed text-muted-foreground">{q.rationale}</p>
+                    <div className="leading-relaxed text-muted-foreground">
+                      <Markdown>{q.rationale}</Markdown>
+                    </div>
                     {q.citations.length > 0 && (
                       <div className="mt-2 flex flex-wrap items-center gap-1.5">
                         <span className="text-xs text-muted-foreground">Manbalar:</span>

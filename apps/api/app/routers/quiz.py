@@ -9,17 +9,16 @@ from pydantic import BaseModel, Field
 
 from .. import db
 from ..agents.quiz_explainer import explain
-from ..agents.quiz_gen import generate_quiz
 from ..auth import get_current_user_id
 from ..services.citations import build_citations_for_chunk_ids
 from ..services.gap_detection import run_gap_detection
-from ..services.quiz_sources import build_sources_block, fetch_quiz_sources
+from ..services.quiz_session import QuizSourcesEmpty, create_quiz_session
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/quiz", tags=["quiz"])
 
-GENERATE_TIMEOUT_S = 15.0
+GENERATE_TIMEOUT_S = 60.0
 DEFAULT_LANG = "uz-latn"
 
 
@@ -182,20 +181,22 @@ async def generate(
             detail="Material hali tayyor emas",
         )
 
-    chunks = await fetch_quiz_sources(material_id, user_id)
-    if not chunks:
+    lang = req.lang or material["lang_detected"] or DEFAULT_LANG
+
+    try:
+        session_id, questions = await create_quiz_session(
+            user_id=user_id,
+            material_id=material_id,
+            num_questions=req.num_questions,
+            difficulty=req.difficulty,
+            lang=lang,
+            provider="openai",
+            timeout_s=GENERATE_TIMEOUT_S,
+        )
+    except QuizSourcesEmpty:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Materialda savol yaratish uchun matn topilmadi",
-        )
-
-    lang = req.lang or material["lang_detected"] or DEFAULT_LANG
-    sources_block = build_sources_block(chunks)
-
-    try:
-        quiz_set = await asyncio.wait_for(
-            generate_quiz(req.num_questions, lang, req.difficulty, sources_block),
-            timeout=GENERATE_TIMEOUT_S,
         )
     except asyncio.TimeoutError:
         logger.warning("quiz generation timed out material=%s", material_id)
@@ -210,51 +211,10 @@ async def generate(
             detail="Savollar yaratishda xato yuz berdi",
         )
 
-    valid_chunk_ids = {c.chunk_id for c in chunks}
-
-    connection = await db.connect()
-    try:
-        async with connection.transaction():
-            session_id: str = await connection.fetchval(
-                """
-                INSERT INTO public.quiz_sessions
-                  (user_id, material_id, lang, difficulty, num_questions)
-                VALUES ($1::uuid, $2::uuid, $3, $4, $5)
-                RETURNING id::text
-                """,
-                user_id,
-                material_id,
-                lang,
-                req.difficulty,
-                len(quiz_set.questions),
-            )
-            public_questions: list[QuestionPublic] = []
-            for ord_idx, q in enumerate(quiz_set.questions):
-                # Keep only chunk ids that came from this material's sources.
-                source_ids = [cid for cid in q.source_chunk_ids if cid in valid_chunk_ids]
-                qid: int = await connection.fetchval(
-                    """
-                    INSERT INTO public.quiz_questions
-                      (session_id, type, prompt, options, correct_answer,
-                       rationale, source_chunk_ids, ord)
-                    VALUES ($1::uuid, $2, $3, $4::jsonb, $5, $6, $7::bigint[], $8)
-                    RETURNING id
-                    """,
-                    session_id,
-                    q.type,
-                    q.prompt,
-                    json.dumps(q.options) if q.options is not None else None,
-                    q.correct_answer,
-                    q.rationale,
-                    source_ids,
-                    ord_idx,
-                )
-                public_questions.append(
-                    QuestionPublic(id=qid, type=q.type, prompt=q.prompt, options=q.options)
-                )
-    finally:
-        await connection.close()
-
+    public_questions = [
+        QuestionPublic(id=q.id, type=q.type, prompt=q.prompt, options=q.options)
+        for q in questions
+    ]
     return GenerateResponse(session_id=session_id, questions=public_questions)
 
 

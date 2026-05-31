@@ -5,7 +5,7 @@ from pydantic_ai.providers.anthropic import AnthropicProvider
 
 from .tutor import sanitize_user_message
 
-EXPLAINER_MODEL = "claude-sonnet-4-6"
+EXPLAINER_MODEL = "claude-haiku-4-5-20251001"
 EXPLAINER_PROMPT_VARIANT = "quizexplain-v1"
 
 # Exact prompt from blueprint §5 (Quiz Explainer), with {lang}, {prompt},
