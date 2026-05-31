@@ -18,7 +18,7 @@
 | 4 | Quiz generator + grader | done | 2026-05-30 | 2026-05-30 | Quiz UI, GPT-4o generation, Sonnet grading, Pydantic AI structured output |
 | 5 | Gap detection + learning plan | done | 2026-05-30 | 2026-05-30 | gap_detect + planner agents, /gaps + /plan, BackgroundTasks trigger |
 | 6 | Telegram bot | done | 2026-05-31 | 2026-05-31 | Webhook bot, link flow, daily push, inline quiz, AIORateLimiter |
-| 7 | Payments | pending |  |  | Payme, Click, Stripe |
+| 7 | Payments | done | 2026-05-31 | 2026-05-31 | Native Payme JSON-RPC + Click MD5 + Stripe Checkout; billing/pricing UI, PaywallModal |
 | 8 | Eval + monitoring + polish | pending |  |  | Langfuse, Sentry, evals, demo |
 
 ## Phase 0 — Kickoff
@@ -378,6 +378,73 @@
   - `pnpm --filter web build` — passed (15/15 routes incl. /telegram)
 - Time spent: ~2.5h
 
+## Phase 7 — Payments
+- Goal: Paid tiers (Talaba 29k UZS, Pro 79k, Team 199k) via Payme + Click (UZS) and
+  Stripe (card). A sandbox payment activates the Talaba tier and it surfaces in /billing.
+- Files created/modified:
+  - apps/api/migrations/0007_billing.sql — subscriptions + payment_transactions + RLS + idempotent (provider, provider_tx_id) unique index
+  - apps/api/app/settings.py — stripe_price_talaba/pro; price_talaba/pro/team_uzs (for amount validation)
+  - apps/api/app/services/billing.py — activate/deactivate/cancel_at_period_end, record_transaction (upsert), get_transaction (Payme state), get_subscription, user_exists; plan→tier + plan→price maps
+  - apps/api/app/routers/billing.py — POST /api/v1/billing/checkout (payme/click/stripe URL), POST /cancel, GET /billing
+  - apps/api/app/routers/webhooks_payme.py — native JSON-RPC 2.0 (6 methods), Basic-Auth Paycom:{key}, tiyin→UZS, Payme error codes
+  - apps/api/app/routers/webhooks_click.py — native Prepare/Complete, MD5 sign verified BEFORE any DB write
+  - apps/api/app/routers/webhooks_stripe.py — construct_event sig verify; checkout.session.completed → activate, customer.subscription.deleted → deactivate, .updated → period rollover
+  - apps/api/app/main.py — registered billing + 3 webhook routers (bare /webhooks/*, no /api/v1 prefix); stripe.api_key init from settings
+  - apps/api/.env.example — STRIPE_PRICE_TALABA, STRIPE_PRICE_PRO
+  - apps/api/tests/test_billing_migration.py, test_billing_service.py, test_webhooks_payme.py, test_webhooks_click.py, test_webhooks_stripe.py
+  - apps/web/lib/api.ts — Tier/Subscription/BillingStatus/UserProfile types; getMe, getBilling, startCheckout, cancelSubscription
+  - apps/web/app/pricing/page.tsx — PUBLIC 4-tier pricing; Upgrade picks provider (Payme/Click/Stripe buttons)
+  - apps/web/app/(app)/billing/page.tsx — current tier/status/period end + Cancel (cancel_at_period_end)
+  - apps/web/components/PaywallModal.tsx — presentational soft paywall + useTier() helper
+  - apps/web/app/(app)/dashboard/page.tsx — added "Tarif" card
+  - apps/web/middleware.ts — added /billing to PROTECTED
+- DEVIATION (documented per CLAUDE.md — user-confirmed): The blueprint/task prescribe the
+  `paytechuz` package for Payme + Click. We implemented both protocols **natively** instead.
+  Why: `paytechuz[fastapi]==0.3.51` pins `pydantic<2.0` (conflicts with our locked Pydantic
+  v2 + Pydantic AI stack — the exact blocker flagged in Phase 0 and Open Questions); its
+  FastAPI handlers require a **sync SQLAlchemy `Session` + an `account_model` ORM class +
+  their own `payments` table** (the whole app is asyncpg + Supabase RLS, no ORM); and the
+  webhook logic is gated behind a **paid `PAYTECH_LICENSE_API_KEY`**. Native code matches the
+  rest of the codebase, has no license dependency, and is fully unit-testable. The blueprint
+  documents both protocols exactly (Payme JSON-RPC 6 methods; Click MD5 sign formulas), which
+  is what we implemented.
+- Other decisions:
+  - Free-tier usage metering (3 docs / 30 msgs/day / 4 quizzes) DEFERRED to Phase 8 (user-confirmed).
+    PaywallModal ships presentational + a useTier() gate hook; no backend counting yet.
+  - Stripe uses env price IDs (STRIPE_PRICE_TALABA / STRIPE_PRICE_PRO), created manually in the
+    Stripe dashboard, per blueprint line_items[{price: ...}] pattern (user-confirmed).
+  - account/user mapping: Payme `account.user_id`, Click `merchant_trans_id`, Stripe
+    `client_reference_id`/metadata all carry the Supabase user id.
+  - amount_uzs stored as integer UZS (NOT tiyin); Payme handler divides incoming tiyin by 100.
+  - Provider selection on /pricing is via explicit buttons (Payme / Click / card), not IP-geo.
+- Webhook URLs to configure in each merchant cabinet (replace APP_BASE_URL):
+  - Payme:  {APP_BASE_URL}/webhooks/payme   (HTTP Basic auth Paycom:{PAYME_KEY}; account field = user_id)
+  - Click:  {APP_BASE_URL}/webhooks/click/prepare  and  {APP_BASE_URL}/webhooks/click/complete
+  - Stripe: {APP_BASE_URL}/webhooks/stripe  (events: checkout.session.completed,
+            customer.subscription.updated, customer.subscription.deleted)
+- Blockers / manual verification needed (no merchant sandbox creds in this environment — same
+  pattern as Phases 2–6):
+  - Run apps/api/migrations/0007_billing.sql in Supabase SQL Editor (after 0006).
+  - Create Stripe products/prices; set STRIPE_PRICE_TALABA / STRIPE_PRICE_PRO + STRIPE_SECRET_KEY
+    + STRIPE_WEBHOOK_SECRET. Configure Payme (PAYME_ID/PAYME_KEY) + Click
+    (CLICK_SERVICE_ID/MERCHANT_ID/MERCHANT_USER_ID/SECRET_KEY) merchant cabinets with the URLs above.
+  - Live acceptance criteria NOT verifiable here (need merchant sandboxes):
+    - Payme test cabinet sandbox payment activates Talaba; /billing shows it within 30s.
+    - Click sandbox Prepare + Complete both return error=0; subscription activates.
+    - Stripe test-mode payment activates; cancel works.
+  - Acceptance criteria verified by unit tests instead:
+    - Invalid Click MD5 sign → error=-1 with NO DB write (record/user_exists not awaited).
+    - Payme bad Basic Auth → -32504; CheckPerformTransaction amount mismatch → -31001;
+      PerformTransaction → activate_subscription(plan='talaba').
+    - Stripe invalid signature → 400; checkout.completed → activate; subscription.deleted → deactivate.
+    - All three providers write to payment_transactions via record_transaction.
+- Env vars added (names only): STRIPE_PRICE_TALABA, STRIPE_PRICE_PRO (api). Web: none new.
+- Checks run:
+  - `uv run mypy app tests` — passed (69 source files, 0 errors)
+  - `uv run pytest -q` — passed (142/142 tests; +21 new)
+  - `pnpm --filter web typecheck` — passed
+  - `pnpm --filter web build` — passed (17/17 routes incl. /pricing public + /billing)
+
 ## Tech stack snapshot (current)
 - Next.js 15.5.18, React 19.2.6, TypeScript 5.9.3
 - Tailwind CSS 4.3.0
@@ -389,19 +456,23 @@
 - llama-index-core 0.14.22, langdetect 1.0.9 — Phase 2 additions
 - sse-starlette (explicit dep) — Phase 3 addition
 - python-telegram-bot[rate-limiter] 21.* + aiolimiter 1.2.1, APScheduler 3.x — Phase 6 additions
+- stripe 14.x (Phase 7); Payme + Click implemented natively (no paytechuz — see Phase 7 deviation)
 - Supabase project: pending (user must create)
 - Models: claude-sonnet-4-6 for tutor (Phase 3), quiz_explainer (Phase 4), gap_detect + planner (Phase 5), and quiz generation (Phase 6 in-bot + web auto-fallback when no OpenAI key); GPT-4o for quiz generation when OPENAI_API_KEY is set (Phase 4); Cohere embed-multilingual-v3.0 for embeddings (1024-dim), Cohere rerank-v3.5
 
 ## Open questions
 - Supabase project must be created and env vars populated (see Phase 1 blockers above).
 - Merchant approvals for Payme and Click should start immediately because they can take 5-10 business days.
-- PayTechUz license key is needed before local Payme/Click integration can be verified.
-- PayTechUz package compatibility with Pydantic v2 must be resolved before Phase 7.
+- PayTechUz dependency RESOLVED: dropped in favor of native Payme/Click implementations (Phase 7
+  deviation) because it pins pydantic<2 and requires sync-SQLAlchemy + a paid license. No
+  PAYTECH_LICENSE_API_KEY is needed anymore.
+- Phase 8 should add free-tier usage metering to trigger the existing PaywallModal (deferred from Phase 7).
 - GitHub CLI auth and network access must be valid in the execution environment for automated PR creation and merge.
 
 ## Next AI to read this
-- Current phase: 7 (pending) — Payments (Payme, Click, Stripe)
+- Current phase: 8 (pending) — Eval + monitoring + polish (Langfuse, Sentry, evals, demo)
 - Start by reading: TODO.md + CLAUDE.md + ilm-ai-comprehensive-product-blueprint-and-phased-build-plan.md
+- Phase 7 left free-tier usage metering for Phase 8 (PaywallModal + useTier() hook already exist).
 
 ## Diary & Submission Compliance
 - Diary folder: diary/

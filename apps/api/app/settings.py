@@ -37,6 +37,13 @@ class Settings(BaseSettings):
 
     stripe_secret_key: str = ""
     stripe_webhook_secret: str = ""
+    stripe_price_talaba: str = ""
+    stripe_price_pro: str = ""
+
+    # Plan prices in UZS (used to validate Payme/Click amounts).
+    price_talaba_uzs: int = 29000
+    price_pro_uzs: int = 79000
+    price_team_uzs: int = 199000
 
     sentry_dsn: str = ""
     langfuse_public_key: str = ""

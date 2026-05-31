@@ -463,6 +463,57 @@ export function setTelegramOptIn(optIn: boolean): Promise<TelegramStatus> {
   });
 }
 
+// ---------------------------------------------------------------------------
+// Billing & payments (Phase 7)
+// ---------------------------------------------------------------------------
+
+export type Tier = "free" | "talaba" | "pro" | "team";
+export type PaymentProvider = "payme" | "click" | "stripe";
+export type PaidPlan = "talaba" | "pro" | "team";
+
+export type UserProfile = {
+  id: string;
+  email: string;
+  full_name: string | null;
+  lang: string;
+  tier: Tier;
+};
+
+export type Subscription = {
+  provider: PaymentProvider | null;
+  plan: string | null;
+  status: string | null;
+  current_period_end: string | null;
+  created_at: string | null;
+};
+
+export type BillingStatus = {
+  tier: Tier;
+  subscription: Subscription | null;
+};
+
+export function getMe(): Promise<UserProfile> {
+  return apiFetch<UserProfile>("/me");
+}
+
+export function getBilling(): Promise<BillingStatus> {
+  return apiFetch<BillingStatus>("/billing");
+}
+
+export function startCheckout(
+  plan: PaidPlan,
+  provider: PaymentProvider
+): Promise<{ url: string }> {
+  return apiFetch<{ url: string }>("/billing/checkout", {
+    method: "POST",
+    body: JSON.stringify({ plan, provider }),
+  });
+}
+
+export function cancelSubscription(): Promise<{ ok: boolean }> {
+  return apiFetch<{ ok: boolean }>("/billing/cancel", { method: "POST" });
+}
+
 async function readError(response: Response): Promise<string> {
   try {
     const data = (await response.json()) as { detail?: unknown };
