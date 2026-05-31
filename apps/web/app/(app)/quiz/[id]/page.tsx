@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Textarea } from "@/components/ui/textarea";
+import { Markdown } from "@/components/Markdown";
 import {
   finishQuiz,
   getQuizTake,
@@ -222,7 +223,11 @@ function FeedbackPanel({ result }: { result: QuizAnswerResult }) {
           To&apos;g&apos;ri javob: <span className="font-medium text-foreground">{result.correct_answer}</span>
         </p>
       )}
-      {result.feedback && <p className="mt-2 leading-relaxed">{result.feedback}</p>}
+      {result.feedback && (
+        <div className="mt-2 leading-relaxed">
+          <Markdown>{result.feedback}</Markdown>
+        </div>
+      )}
     </div>
   );
 }
