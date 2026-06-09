@@ -12,7 +12,7 @@ Build diary: [diary/](./diary/)
 
 **Frontend:** [https://ilm-ai-mu.vercel.app](https://ilm-ai-mu.vercel.app)
 
-> **Note: The backend is not publicly deployed yet.** The frontend is live on Vercel but all API features (chat, upload, quiz, learning plan, Telegram linking) require the backend running locally. See the setup instructions below. To see the full app in action without running anything locally, watch the demo videos at the bottom of this page.
+> **Note: The backend is not publicly deployed yet.** The frontend is live on Vercel but all API features (chat, upload, quiz, learning plan, Telegram linking) require the backend running locally. See the setup instructions below. To see the full app in action without running anything locally, watch the demo videos below.
 
 **To run the backend locally:**
 
@@ -23,6 +23,15 @@ uv run uvicorn app.main:app --reload --port 8000
 ```
 
 Then open [https://ilm-ai-mu.vercel.app](https://ilm-ai-mu.vercel.app) in your browser. Auth, chat, upload, quiz, and all other features talk to your local backend on port 8000.
+
+## Demo Videos
+
+These recordings show the full app working end-to-end. Watch these if you don't want to run the backend locally.
+
+| Video | What it covers |
+|---|---|
+| [Week 2 — Web App](https://www.loom.com/share/64542f1d47a94732b176644a01e4043d) | Sign in, material upload, RAG chat, quiz mode, learning plan |
+| [Week 2 — Telegram Bot](https://www.loom.com/share/b60ce1d29a3241709553dad1d2d7f451) | /start, account linking, inline quiz, /today, /streak, daily push |
 
 ## Session Explainers
 
@@ -54,12 +63,3 @@ Mentor session notes live in [docs/sessions/](./docs/sessions/). Each file cover
 | Week 2 | Quiz + learning plan + Telegram bot |
 | Week 3 | Gap detection + payments + mobile polish |
 | Week 4 | Production deployment + CI/CD + monitoring + evaluation |
-
-## Demo Videos
-
-These recordings show the full app working end-to-end. Watch these if you don't want to run the backend locally.
-
-| Video | What it covers |
-|---|---|
-| [Week 2 — Web App](https://www.loom.com/share/64542f1d47a94732b176644a01e4043d) | Sign in, material upload, RAG chat, quiz mode, learning plan |
-| [Week 2 — Telegram Bot](https://www.loom.com/share/b60ce1d29a3241709553dad1d2d7f451) | /start, account linking, inline quiz, /today, /streak, daily push |
