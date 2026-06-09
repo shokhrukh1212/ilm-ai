@@ -319,7 +319,7 @@ async def quiz_question_for_user(question_id: int, user_id: str) -> dict[str, An
     try:
         row = await connection.fetchrow(
             """
-            SELECT q.id, q.session_id::text AS session_id, q.options,
+            SELECT q.id, q.session_id::text AS session_id, q.prompt, q.options,
                    q.correct_answer, q.rationale
             FROM public.quiz_questions q
             JOIN public.quiz_sessions s ON s.id = q.session_id
@@ -335,6 +335,7 @@ async def quiz_question_for_user(question_id: int, user_id: str) -> dict[str, An
     return {
         "id": int(row["id"]),
         "session_id": row["session_id"],
+        "prompt": row["prompt"] or "",
         "options": _parse_options(row["options"]),
         "correct_answer": row["correct_answer"] or "",
         "rationale": row["rationale"] or "",
