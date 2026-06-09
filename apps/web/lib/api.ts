@@ -52,6 +52,7 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
         ...(init.body instanceof FormData ? {} : { "Content-Type": "application/json" }),
         ...init.headers,
         Authorization: `Bearer ${session.access_token}`,
+        "ngrok-skip-browser-warning": "1",
       },
     });
   } catch {
@@ -146,6 +147,7 @@ export async function streamChat(req: ChatRequest, handlers: ChatStreamHandlers)
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${session.access_token}`,
+        "ngrok-skip-browser-warning": "1",
       },
       body: JSON.stringify(req),
     });
@@ -226,7 +228,7 @@ export async function getMaterialContent(id: string): Promise<string> {
 
   const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
   const response = await fetch(`${API_BASE_URL}/api/v1/materials/${id}/content`, {
-    headers: { Authorization: `Bearer ${session.access_token}` },
+    headers: { Authorization: `Bearer ${session.access_token}`, "ngrok-skip-browser-warning": "1" },
   });
   if (!response.ok) throw new Error("Matn yuklanmadi");
   return response.text();
