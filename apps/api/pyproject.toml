@@ -25,7 +25,6 @@ dependencies = [
   "python-telegram-bot[rate-limiter]==21.*",
   "sentry-sdk[fastapi]>=2,<3",
   "sqlalchemy>=2,<3",
-  "stripe>=14,<15",
   "supabase>=2,<3",
   "sse-starlette>=2,<3",
   "uvicorn[standard]>=0.38,<1"

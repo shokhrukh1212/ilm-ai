@@ -7,7 +7,19 @@ from fastapi import FastAPI, Header, HTTPException, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from telegram import Update
 
-from .routers import chat, gaps, materials, me, plan, quiz, telegram_link
+from .routers import (
+    billing,
+    chat,
+    gaps,
+    materials,
+    me,
+    plan,
+    quiz,
+    telegram_link,
+    webhooks_click,
+    webhooks_lemonsqueezy,
+    webhooks_payme,
+)
 from .settings import settings
 from .telegram.bot import build_application
 from .telegram.scheduler import send_daily_push, start_scheduler
@@ -80,6 +92,10 @@ app.include_router(quiz.router)
 app.include_router(gaps.router)
 app.include_router(plan.router)
 app.include_router(telegram_link.router)
+app.include_router(billing.router)
+app.include_router(webhooks_payme.router)
+app.include_router(webhooks_click.router)
+app.include_router(webhooks_lemonsqueezy.router)
 
 
 @app.get("/health")

@@ -1,6 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { BookOpen, CalendarDays, GraduationCap, MessageCircle, Send, Target } from "lucide-react";
+import { BookOpen, CalendarDays, CreditCard, GraduationCap, MessageCircle, Send, Target } from "lucide-react";
 import Link from "next/link";
 
 export default async function DashboardPage() {
@@ -104,6 +104,20 @@ export default async function DashboardPage() {
             <CardDescription>
               <Link href="/telegram" className="text-primary underline-offset-4 hover:underline">
                 Botni ulang, kunlik testlar oling
+              </Link>
+            </CardDescription>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center gap-3 pb-2">
+            <CreditCard className="h-5 w-5 text-primary" />
+            <CardTitle className="text-base">Tarif</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <CardDescription>
+              <Link href="/billing" className="text-primary underline-offset-4 hover:underline">
+                Obunangizni boshqaring
               </Link>
             </CardDescription>
           </CardContent>

@@ -35,8 +35,18 @@ class Settings(BaseSettings):
     click_secret_key: str = ""
     paytech_license_api_key: str = ""
 
-    stripe_secret_key: str = ""
-    stripe_webhook_secret: str = ""
+    # Lemon Squeezy (international card rail; Merchant of Record — Stripe is not
+    # available to UZ-based businesses, so it replaces Stripe entirely).
+    lemonsqueezy_api_key: str = ""
+    lemonsqueezy_store_id: str = ""
+    lemonsqueezy_webhook_secret: str = ""
+    lemonsqueezy_variant_talaba: str = ""
+    lemonsqueezy_variant_pro: str = ""
+
+    # Plan prices in UZS (used to validate Payme/Click amounts).
+    price_talaba_uzs: int = 29000
+    price_pro_uzs: int = 79000
+    price_team_uzs: int = 199000
 
     sentry_dsn: str = ""
     langfuse_public_key: str = ""
